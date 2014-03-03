@@ -100,13 +100,16 @@ namespace
         p->setRadius( bs.radius() );
         p->setFileName( 0, uri );
 #else
+
         PagedLODWithNodeOperations* p = new PagedLODWithNodeOperations(postMergeOps);
         p->setCenter( bs.center() );
         p->setRadius( bs.radius() );
         p->setFileName( 0, uri );
-        p->setRange( 0, minRange, maxRange );
+        p->setRangeMode( osg::LOD::PIXEL_SIZE_ON_SCREEN );
+        p->setRange( 0, maxRange, FLT_MAX );
         p->setPriorityOffset( 0, priOffset );
         p->setPriorityScale( 0, priScale );
+
 #endif
 
 #if 1 // think about this.
@@ -474,9 +477,9 @@ FeatureModelGraph::setupPaging()
     // calculate the max range for the top-level PLOD:
     // TODO: a user-specified maxRange is actually an altitude, so this is not
     //       strictly correct anymore!
-    float maxRange = 
-        maxRangeOverride.isSet() ? *maxRangeOverride :
-        bs.radius() * _options.layout()->tileSizeFactor().value();
+ //   float maxRange = 
+ //       maxRangeOverride.isSet() ? *maxRangeOverride :
+ //       bs.radius() * _options.layout()->tileSizeFactor().value();
 
     // build the URI for the top-level paged LOD:
     std::string uri = s_makeURI( _uid, 0, 0, 0 );
@@ -486,7 +489,7 @@ FeatureModelGraph::setupPaging()
         bs, 
         uri, 
         0.0f, 
-        maxRange, 
+        _options.layout()->tileSizeFactor().value(), 
         *_options.layout()->priorityOffset(), 
         *_options.layout()->priorityScale(),
         _postMergeOperations.get() );
@@ -526,7 +529,7 @@ FeatureModelGraph::load( unsigned lod, unsigned tileX, unsigned tileY, const std
             // Apply the tile range multiplier to calculate a max camera range. The max range is
             // the geographic radius of the tile times the multiplier.
             float tileFactor = _options.layout().isSet() ? _options.layout()->tileSizeFactor().get() : 15.0f;            
-            double maxRange =  tileBound.radius() * tileFactor;
+            double maxRange =  tileFactor;
             FeatureLevel level( 0, maxRange );
             //OE_NOTICE << "(" << lod << ": " << tileX << ", " << tileY << ")" << std::endl;
             //OE_NOTICE << "  extent = " << tileExtent.width() << "x" << tileExtent.height() << std::endl;
@@ -548,7 +551,7 @@ FeatureModelGraph::load( unsigned lod, unsigned tileX, unsigned tileY, const std
             if ( lod+1 != ~0 )
             {
                 // only build sub-pagedlods if we are expecting subtiles at some point:
-                if ( geometry != 0L || (int)lod < featureProfile->getFirstLevel() )
+//                if ( geometry != 0L || (int)lod < featureProfile->getFirstLevel() )
                 {
                     MapFrame mapf = _session->createMapFrame();
                     buildSubTilePagedLODs( lod, tileX, tileY, &mapf, group.get() );
@@ -656,7 +659,7 @@ FeatureModelGraph::buildSubTilePagedLODs(unsigned        parentLOD,
             // the max range of a FeatureLevel below this will, by definition, have a max range
             // less than or equal to this number -- based on how the LODs were chosen in 
             // setupPaging.
-            float maxRange = subtile_bs.radius() * _options.layout()->tileSizeFactor().value();
+            float maxRange = _options.layout()->tileSizeFactor().value();
 
             std::string uri = s_makeURI( _uid, subtileLOD, u, v );
 
@@ -767,10 +770,10 @@ FeatureModelGraph::buildLevel( const FeatureLevel& level, const GeoExtent& exten
         float minRange = level.minRange();
         if ( minRange > 0.0f )
         {
-            ElevationLOD* lod = new ElevationLOD( _session->getMapSRS() );
-            lod->setMinElevation( minRange );
-            lod->addChild( group.get() );
-            group = lod;
+//            ElevationLOD* lod = new ElevationLOD( _session->getMapSRS() );
+//            lod->setMinElevation( minRange );
+//            lod->addChild( group.get() );
+//            group = lod;
         }
 
         // install a cluster culler.
