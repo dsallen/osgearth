@@ -297,7 +297,8 @@ _terrainAvoidanceEnabled        ( true ),
 _terrainAvoidanceMinDistance    ( 1.0 ),
 _throwingEnabled                ( false ),
 _throwDecayRate                 ( 0.175 ),
-_zoomToMouse                    ( true )
+_zoomToMouse                    ( true ),
+_allowTouchDragCombos           ( false )
 {
     //NOP
 }
@@ -329,7 +330,8 @@ _terrainAvoidanceEnabled( rhs._terrainAvoidanceEnabled ),
 _terrainAvoidanceMinDistance( rhs._terrainAvoidanceMinDistance ),
 _throwingEnabled( rhs._throwingEnabled ),
 _throwDecayRate( rhs._throwDecayRate ),
-_zoomToMouse( rhs._zoomToMouse )
+_zoomToMouse( rhs._zoomToMouse ),
+_allowTouchDragCombos( rhs._allowTouchDragCombos )
 {
     //NOP
 }
@@ -2196,10 +2198,13 @@ EarthManipulator::parseTouchEvents( TouchEvents& output )
 
         // Threshold in pixels for determining if a two finger drag happened.
         float dragThres = 1.0f;
+        bool doMultiDrag = ( osg::equivalent(vec0.x(), vec1.x(), dragThres) &&
+                             osg::equivalent(vec0.y(), vec1.y(), dragThres) ) ||
+                           _settings->getAllowTouchDragCombos();
 
-        // now see if that corresponds to any touch events:
-        if (osg::equivalent(vec0.x(), vec1.x(), dragThres) &&
-            osg::equivalent(vec0.y(), vec1.y(), dragThres))
+        // First check if we should be doing the multidrag event, either because
+        // it was a pure drag, or because we allow it in combination with pinch/twise
+        if( doMultiDrag )
         {
             // two-finger drag.
             output.push_back(TouchEvent());
@@ -2208,7 +2213,9 @@ EarthManipulator::parseTouchEvents( TouchEvents& output )
             ev._dx = 0.5 * (dx[0] + dx[1]) * sens;
             ev._dy = 0.5 * (dy[0] + dy[1]) * sens;
         }
-        else
+
+        // If it wasn't a drag event, or if we allow drag combinations, do the pinch/twist
+        if( !doMultiDrag || _settings->getAllowTouchDragCombos() )
         {
             // otherwise it's a pinch and/or a zoom.  You can do them together.
             if (fabs(deltaDistance) > (1.0 * 0.0005 / sens))
@@ -2688,6 +2695,9 @@ EarthManipulator::zoom( double dx, double dy, osg::View* in_view )
     if ( !camera )
         return;
 
+    if ( !recalculateCenterFromLookVector() )
+        return;
+
     // reset the "remembered start location" if we're just starting a continuous zoom
     static osg::Vec3d zero(0,0,0);
     if (_last_action._type != ACTION_ZOOM)
@@ -2721,7 +2731,7 @@ EarthManipulator::zoom( double dx, double dy, osg::View* in_view )
 
             // Factor by which to scale the distance:
             double scale = 1.0f + dy;
-            double newDistance = _distance*scale;
+            double newDistance = osg::clampBetween( _distance*scale, _settings->getMinDistance(), _settings->getMaxDistance() );
             double delta = _distance - newDistance;
             double ratio = delta/_distance;
 
@@ -3366,6 +3376,9 @@ EarthManipulator::drag(double dx, double dy, osg::View* theView)
         camera = view->getCamera();
 
     if ( !camera )
+        return;
+
+    if ( !recalculateCenterFromLookVector() )
         return;
 
     osg::Matrix viewMat = camera->getViewMatrix();

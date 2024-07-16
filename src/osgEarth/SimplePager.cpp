@@ -19,7 +19,6 @@ using namespace osgEarth::Util;
 
 #define LC "[SimplerPager] "
 
-
 SimplePager::SimplePager(const osgEarth::Map* map, const osgEarth::Profile* profile) :
     _map(map),
     _profile(profile)
@@ -365,7 +364,6 @@ SimplePager::createChildNode(const TileKey& key, ProgressCallback* progress)
 
         result = pagedNode;
     }
-
     else // !hasChildren
     {
         if (payload.valid())

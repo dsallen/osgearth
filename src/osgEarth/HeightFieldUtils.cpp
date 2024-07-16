@@ -517,6 +517,8 @@ HeightFieldUtils::createReferenceHeightField(
         0.0 ) );
 
     const VerticalDatum* vdatum = ex.isValid() ? ex.getSRS()->getVerticalDatum() : 0L;
+    if( !vdatum ) 
+       vdatum = osgEarth::SpatialReference::get("epsg:4326","egm96")->getVerticalDatum();
 
     if ( vdatum && expressAsHAE )
     {
