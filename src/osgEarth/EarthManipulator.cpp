@@ -1738,11 +1738,14 @@ EarthManipulator::handle(const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapt
 
     if ( ea.isMultiTouchEvent() )
     {
-        // not a mouse event; clear the mouse queue.
-        resetMouse( aa, false );
-
         // queue up a touch event set and figure out the current state:
         addTouchEvents(ea);
+
+        // not a mouse event; clear the mouse queue.
+        if( _ga_t1.valid() && !_ga_t1->isMultiTouchEvent() )
+           resetMouse( aa, false );
+
+
         TouchEvents te;
         if ( parseTouchEvents(te) )
         {
