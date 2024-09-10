@@ -367,6 +367,7 @@ FeatureModelGraph::FeatureModelGraph(const FeatureModelOptions& options) :
     _featureExtentClamped(false),
     _useTiledSource(false),
     _isActive(false),
+    _elevationSet(),
     loadedTiles(std::make_shared<std::atomic_int>(0))
 {
     //nop
@@ -815,9 +816,25 @@ FeatureModelGraph::getBoundInWorldCoords(const GeoExtent& extent, const Profile*
             map->getLayers<ElevationLayer>(elevationLayers);
             if (!elevationLayers.empty())
             {
+                unsigned actual_lod = lod;
                 // Get the approximate elevation range if we have elevation data in the map
                 lod = osg::clampBetween(lod, 0u, ElevationRanges::getMaxLevel());
                 GeoPoint centerWGS84 = center.transform(ElevationRanges::getProfile()->getSRS());
+
+                float elevation = NO_DATA_VALUE;
+                float sampledMin = elevation;
+                float sampledMax = elevation;
+                if( actual_lod != lod )
+                {
+                   ElevationSample sample = map->getElevationPool()->getSample(centerWGS84, &_elevationSet);
+                   if( sample.hasData() )
+                   {
+                      elevation = sample.elevation();
+                      float adjust = (40000000*0.05)/pow(2.0,actual_lod);
+                      sampledMin = elevation - adjust;
+                      sampledMax = elevation + adjust;
+                   }
+                }
 
                 TileKey rangeKey = ElevationRanges::getProfile()->createTileKey(centerWGS84.x(), centerWGS84.y(), lod);
                 short min, max;
@@ -829,10 +846,23 @@ FeatureModelGraph::getBoundInWorldCoords(const GeoExtent& extent, const Profile*
                 {
                     ElevationRanges::getDefaultElevationRange(min, max);
                 }
-                // Clamp the min value to avoid extreme underwater values.
-                minElevation = osg::maximum(min, (short)-500);
-                // Add a little bit extra of extra height to account for feature data.
-                maxElevation = max + 100.0f;
+
+                minElevation = (float)min;
+                maxElevation = (float)max;
+
+                if( sampledMin != NO_DATA_VALUE && sampledMin > minElevation)
+                {
+                   minElevation = sampledMin;
+                }
+
+                if( sampledMax != NO_DATA_VALUE && sampledMax < maxElevation )
+                {
+                   maxElevation = sampledMax;
+                }
+
+                // Clamp the values to avoid extreme underwater values.
+                minElevation = osg::maximum(minElevation, -500.0f);
+                maxElevation = osg::maximum(maxElevation, -500.0f);
             }
         }
 #endif

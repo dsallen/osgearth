@@ -234,6 +234,7 @@ namespace osgEarth { namespace Util
 
         //osg::ref_ptr<FeatureCursor> createCursor(FeatureSource* fs, FilterContext& cx, const Query& query, ProgressCallback* progress) const;
         FeatureFilterChain _filterChain;
+        mutable ElevationPool::WorkingSet _elevationSet;
     };
 } }
 
