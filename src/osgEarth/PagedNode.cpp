@@ -79,6 +79,10 @@ PagedNode2::traverse(osg::NodeVisitor& nv)
                 if (cullStack != nullptr && cullStack->getLODScale() > 0.0f)
                 {
                     float pixels = cullStack->clampedPixelSize(getBound()) / cullStack->getLODScale();
+
+                    if( isinf(pixels) )
+                       pixels = FLT_MAX;
+
                     inRange = (pixels >= _minPixels && pixels <= _maxPixels);
                     _priority = pixels * _priorityScale;
                 }
