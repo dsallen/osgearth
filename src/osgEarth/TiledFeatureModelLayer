@@ -118,6 +118,7 @@ namespace osgEarth
 
         //! Creates an OSG node from a tile key.
         osg::ref_ptr<osg::Node> createTileImplementation(const TileKey&, ProgressCallback*) const override;
+        void create() override;
 
     protected:
 

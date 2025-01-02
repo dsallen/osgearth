@@ -98,16 +98,16 @@ namespace osgEarth
         //! @param key The tile key, in the underlying tiled data source's profile.
         //! @param progress A progress callback that can be checked for user cancellation.
         virtual osg::ref_ptr<osg::Node> createTileImplementation(const TileKey& key, ProgressCallback* progress) const = 0;
+        virtual void create();
 
         // NVGL support:
         osg::ref_ptr<TextureArena> _textures;
         mutable ChonkFactory _chonkFactory;
+        osg::ref_ptr< osg::Group > _root;
 
     private:
         osg::observer_ptr< const Map > _map;
-        osg::ref_ptr< osg::Group > _root;
         bool _graphDirty;
         osg::ref_ptr<StateSetCache> _statesetCache;
-        void create();
     };
 }

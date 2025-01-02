@@ -19,6 +19,7 @@
 #include <osgEarth/TiledFeatureModelLayer>
 #include <osgEarth/NetworkMonitor>
 #include <osgEarth/Registry>
+#include <osgEarth/SimplePager>
 
 using namespace osgEarth;
 
@@ -223,6 +224,21 @@ TiledFeatureModelLayer::removedFromMap(const Map* map)
     options().styleSheet().removedFromMap(map);
 
     _session = 0L;
+}
+
+void
+TiledFeatureModelLayer::create()
+{
+   super::create();
+   osg::ref_ptr<SimplePager> pager = findTopMostNodeOfType<SimplePager>(_root.get());
+   if( options().layout().isSet() && pager )
+   {
+      const FeatureDisplayLayout& l = options().layout().value();
+      if( l.minPixels().isSet() ) pager->setMinPixels( l.minPixels().value() );
+      if( l.maxPixels().isSet() ) pager->setMaxPixels( l.maxPixels().value() );
+//      if( l.minRange().isSet() )  pager->setMinRange(  l.minRange().value() ); // not supported i guess
+      if( l.maxRange().isSet() )  pager->setMaxRange(  l.maxRange().value() );
+   }
 }
 
 osg::ref_ptr<osg::Node>

@@ -269,19 +269,14 @@ namespace
         p->setLoadFunction(func);
         p->setCenter(bs.center());
         p->setRadius(bs.radius());
-        if( layout.useRange().get() )
-        {    
-            p->setMinRange(minRange);
-            p->setMaxRange(maxRange);
-        }
-        else
-        {
-            if( layout.minPixels().isSet() )
-                p->setMinPixels(layout.minPixels().get());
+        p->setMinRange(minRange);
+        p->setMaxRange(maxRange);
 
-            if( layout.maxPixels().isSet() )
-                p->setMaxPixels(layout.maxPixels().get());
-        }
+        if( layout.minPixels().isSet() )
+          p->setMinPixels(layout.minPixels().get());
+
+        if( layout.maxPixels().isSet() )
+          p->setMaxPixels(layout.maxPixels().get());
 
         p->setPriorityScale(layout.priorityScale().get());
         p->setSceneGraphCallbacks(sgCallbacks);

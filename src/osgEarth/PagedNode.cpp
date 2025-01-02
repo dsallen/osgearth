@@ -65,15 +65,17 @@ PagedNode2::traverse(osg::NodeVisitor& nv)
     {
         if (nv.getVisitorType() == nv.CULL_VISITOR)
         {
-            bool inRange = false;
+            bool inRange = true;
+            float range = std::max(0.0f, nv.getDistanceToViewPoint(getBound().center(), true) - getBound().radius());
 
-            if (_useRange) // meters
-            {
-                float range = std::max(0.0f, nv.getDistanceToViewPoint(getBound().center(), true) - getBound().radius());
-                inRange = (range >= _minRange && range <= _maxRange);
+            if( isinf(range))
+                range = FLT_MAX;
+
+             inRange = (range >= _minRange && range <= _maxRange);
+             if( _minPixels <= 0 )
                 _priority = -range * _priorityScale;
-            }
-            else // pixels
+
+            if( inRange && _minPixels > 0 ) // pixels
             {
                 osg::CullStack* cullStack = nv.asCullStack();
                 if (cullStack != nullptr && cullStack->getLODScale() > 0.0f)
