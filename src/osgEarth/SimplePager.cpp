@@ -283,13 +283,13 @@ SimplePager::createChildNode(const TileKey& key, ProgressCallback* progress)
                 payload->accept(*kdTreeBuilder.get());
             }
         }
-        else if (!_additive)
-        {
-            // If we are in REPLACE mode, and this node's payload did not appear,
-            // we have run out of data and will stop here.
-            // In ADD mode, we will continue to subdivide because we do not know when data will appear.
-            hasChildren = false;
-        }
+        //else if (!_additive)
+        //{
+        //    // If we are in REPLACE mode, and this node's payload did not appear,
+        //    // we have run out of data and will stop here.
+        //    // In ADD mode, we will continue to subdivide because we do not know when data will appear.
+        //    hasChildren = false;
+        //}
     }
 
     if (hasChildren)
