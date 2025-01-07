@@ -66,7 +66,7 @@ PagedNode2::traverse(osg::NodeVisitor& nv)
         if (nv.getVisitorType() == nv.CULL_VISITOR)
         {
             bool inRange = true;
-            float range = std::max(0.0f, nv.getDistanceToViewPoint(getBound().center(), true) - getBound().radius());
+            float range = std::max(0.0f, nv.getDistanceToViewPoint(getBound().center(), _minPixels<=0) - getBound().radius());
 
             if( isinf(range))
                 range = FLT_MAX;
