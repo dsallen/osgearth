@@ -65,19 +65,23 @@ PagedNode2::traverse(osg::NodeVisitor& nv)
     {
         if (nv.getVisitorType() == nv.CULL_VISITOR)
         {
-            bool inRange = true;
-            float range = std::max(0.0f, nv.getDistanceToViewPoint(getBound().center(), _minPixels<=0) - getBound().radius());
+            bool inRange = false;
+            osg::CullStack* cullStack = nv.asCullStack();
+            
+            if( !cullStack->isCulled(getBound()) )
+            {
+                float range = std::max(0.0f, nv.getDistanceToViewPoint(getBound().center(), _minPixels<=0) - getBound().radius());
 
-            if( isinf(range))
-                range = FLT_MAX;
+                if( isinf(range))
+                   range = FLT_MAX;
 
-             inRange = (range >= _minRange && range <= _maxRange);
-             if( _minPixels <= 0 )
-                _priority = -range * _priorityScale;
+                inRange = (range >= _minRange && range <= _maxRange);
+                if( _minPixels <= 0 )
+                   _priority = -range * _priorityScale;
+            }
 
             if( inRange && _minPixels > 0 ) // pixels
             {
-                osg::CullStack* cullStack = nv.asCullStack();
                 if (cullStack != nullptr && cullStack->getLODScale() > 0.0f)
                 {
                     float pixels = cullStack->clampedPixelSize(getBound()) / cullStack->getLODScale();
