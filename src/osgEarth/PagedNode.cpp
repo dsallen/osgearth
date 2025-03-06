@@ -66,6 +66,7 @@ PagedNode2::traverse(osg::NodeVisitor& nv)
         if (nv.getVisitorType() == nv.CULL_VISITOR)
         {
             bool inRange = false;
+            bool inRadius = false;
             osg::CullStack* cullStack = nv.asCullStack();
             
             if( !cullStack->isCulled(getBound()) )
@@ -74,13 +75,15 @@ PagedNode2::traverse(osg::NodeVisitor& nv)
 
                 if( isinf(range))
                    range = FLT_MAX;
+                else if( range <= 0.0 )
+                   inRadius = true;
 
                 inRange = (range >= _minRange && range <= _maxRange);
                 if( _minPixels <= 0 )
                    _priority = -range * _priorityScale;
             }
 
-            if( inRange && _minPixels > 0 ) // pixels
+            if( inRange && _minPixels > 0 && !inRadius) // pixels
             {
                 if (cullStack != nullptr && cullStack->getLODScale() > 0.0f)
                 {
