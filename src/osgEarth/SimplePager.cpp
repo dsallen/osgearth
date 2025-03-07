@@ -167,8 +167,11 @@ osg::BoundingSphered SimplePager::getBounds(const TileKey& key) const
        float elevation = NO_DATA_VALUE;
        float sampledMin = elevation;
        float sampledMax = elevation;
-       if( actual_lod != lod )
+       if( actual_lod != lod && actual_lod >= 14 )
        {
+           Distance resolution = Distance( 180.0 / pow(2.0,actual_lod) / 16.0,
+                                           Units::DEGREES );
+
           ElevationSample sample = map->getElevationPool()->getSample(centerWGS84, &_elevationSet);
           if( sample.hasData() )
           {
