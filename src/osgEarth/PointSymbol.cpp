@@ -47,6 +47,7 @@ PointSymbol::getConfig() const
     conf.key() = "point";
     conf.set( "fill", _fill );
     conf.set( "size", _size );
+    conf.set( "size_expr", _size_expr.get().expr() );
     conf.set( "smooth", _smooth );
     return conf;
 }
@@ -56,6 +57,7 @@ PointSymbol::mergeConfig( const Config& conf )
 {
     conf.get( "fill", _fill );
     conf.get( "size", _size );
+    _size_expr = StringExpression( conf.value("size_expr") );
     conf.get( "smooth", _smooth );
 }
 

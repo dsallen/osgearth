@@ -23,7 +23,7 @@
 #include <osgEarth/Common>
 #include <osgEarth/Color>
 #include <osgEarth/Config>
-
+#include <osgEarth/Expression>
 
 namespace osgEarth
 {
@@ -37,12 +37,24 @@ namespace osgEarth
         Fill(const Fill& rhs);
         Fill( float r, float g, float b, float a );
         Fill( const Color& color );
+        Fill(StringExpression expr);
         Fill( const Config& conf );
 
         virtual ~Fill() { }
 
         Color& color() { return _color; }
-        const Color& color() const { return _color; }
+        optional<StringExpression>& colorExpr() { return _expr; }
+        Color color() const
+        {
+           if (_expr.get().expr() != "")
+           {
+              std::string scolor = _expr.get().eval();
+              if (scolor != "")
+                 return Color(scolor, Color::Format::RGBA);
+           }
+
+           return _color;
+        }
 
     public:
         virtual Config getConfig() const;
@@ -50,6 +62,7 @@ namespace osgEarth
 
     protected:
         Color _color;
+        optional<StringExpression> _expr;
         void init();
     };
 } // namespace osgEarth

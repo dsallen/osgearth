@@ -44,7 +44,18 @@ namespace osgEarth
 
         /** Point size property */
         optional<float>& size() { return _size; }
-        const optional<float>& size() const { return _size; }
+        optional<StringExpression>& sizeExpr() { return _size_expr; }
+        optional<float> size() const
+        {
+           if (_size_expr.get().expr() != "")
+           {
+              std::string ssize = _size_expr.get().eval();
+              if (ssize != "")
+                 return std::stof(ssize);
+           }
+
+           return _size;
+        }
 
         /** Smoothing (antialiasing/rounding) */
         optional<bool>& smooth() { return _smooth; }
@@ -58,6 +69,7 @@ namespace osgEarth
     protected:
         optional<Fill>  _fill;
         optional<float> _size;
+        optional<StringExpression> _size_expr;
         optional<bool>  _smooth;
     };
 } // namespace osgEarth

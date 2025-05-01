@@ -24,7 +24,7 @@
 #include <osgEarth/Color>
 #include <osgEarth/Config>
 #include <osgEarth/Units>
-
+#include <osgEarth/Expression>
 
 namespace osgEarth
 {
@@ -61,7 +61,18 @@ namespace osgEarth
 
         /** Line color. */
         Color& color() { return _color; }
-        const Color& color() const { return _color; }
+        optional<StringExpression> colorExpr() { return _color_expr; }
+        Color color() const
+        {
+           if (_color_expr.get().expr() != "")
+           {
+              std::string scolor = _color_expr.get().eval();
+              if (scolor != "")
+                 return Color(scolor, Color::Format::RGBA);
+           }
+
+           return _color;
+        }
 
         /** Capping of line ends. */
         optional<LineCapStyle>& lineCap() { return _lineCap; }
@@ -73,7 +84,18 @@ namespace osgEarth
 
         /** Line rendering width. */
         optional<float>& width() { return _width; }
-        const optional<float>& width() const { return _width; }
+        optional<StringExpression>& widthExpr() { return _width_expr; }
+        optional<float> width() const
+        {
+           if (_width_expr.get().expr() != "")
+           {
+              std::string swidth = _width_expr.get().eval();
+              if (swidth != "")
+                 return std::stof(swidth);
+           }
+
+           return _width;
+        }
 
         /** Units for the width property. (default = Units::PIXELS) */
         optional<UnitsType>& widthUnits() { return _widthUnits; }
@@ -118,9 +140,11 @@ namespace osgEarth
 
     protected:
         Color                    _color;
+        optional<StringExpression> _color_expr;
         optional<LineCapStyle>   _lineCap;
         optional<LineJoinStyle>  _lineJoin;
         optional<float>          _width;
+        optional<StringExpression> _width_expr;
         optional<UnitsType>      _widthUnits;
         optional<unsigned>       _stippleFactor;
         optional<unsigned short> _stipplePattern;
