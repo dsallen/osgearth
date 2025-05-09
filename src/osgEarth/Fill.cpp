@@ -62,6 +62,7 @@ Fill::init()
 {
     _color.set( 1.0f, 1.0f, 1.0f, 1.0f );
     _expr = StringExpression(std::string(""));
+    _expr_result = std::string("");
 }
 
 Config
@@ -70,6 +71,7 @@ Fill::getConfig() const
     Config conf("fill");
     conf.add("color", _color.toHTML() );
     conf.add("color_expr", _expr.get().expr() );
+    conf.add("color_expr_result", _expr_result );
     return conf;
 }
 
@@ -78,4 +80,5 @@ Fill::mergeConfig( const Config& conf )
 {
     _color = Color( conf.value("color") );
     _expr = StringExpression( conf.value("color_expr") );
+    _expr_result = conf.value( "color_expr_result" );
 }

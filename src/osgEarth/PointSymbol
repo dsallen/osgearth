@@ -45,13 +45,14 @@ namespace osgEarth
         /** Point size property */
         optional<float>& size() { return _size; }
         optional<StringExpression>& sizeExpr() { return _size_expr; }
+        std::string& sizeExprResult() { return _size_expr_result; }
         optional<float> size() const
         {
-           if (_size_expr.get().expr() != "")
+           if (_size_expr_result != "")
            {
-              std::string ssize = _size_expr.get().eval();
-              if (ssize != "")
-                 return std::stof(ssize);
+              float s = std::stof(_size_expr_result);
+              if (s > 0.0f)
+                 return s;
            }
 
            return _size;
@@ -70,6 +71,7 @@ namespace osgEarth
         optional<Fill>  _fill;
         optional<float> _size;
         optional<StringExpression> _size_expr;
+        std::string _size_expr_result;
         optional<bool>  _smooth;
     };
 } // namespace osgEarth

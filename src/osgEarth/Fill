@@ -44,15 +44,11 @@ namespace osgEarth
 
         Color& color() { return _color; }
         optional<StringExpression>& colorExpr() { return _expr; }
+        std::string& colorExprResult() { return _expr_result; }
         Color color() const
         {
-           if (_expr.get().expr() != "")
-           {
-              std::string scolor = _expr.get().eval();
-              if (scolor != "")
-                 return Color(scolor, Color::Format::RGBA);
-           }
-
+           if (_expr_result != "")
+               return Color(_expr_result, Color::Format::RGBA);
            return _color;
         }
 
@@ -63,6 +59,7 @@ namespace osgEarth
     protected:
         Color _color;
         optional<StringExpression> _expr;
+        std::string _expr_result;
         void init();
     };
 } // namespace osgEarth

@@ -27,6 +27,8 @@ PointSymbol::PointSymbol(const PointSymbol& rhs,const osg::CopyOp& copyop):
 Symbol(rhs, copyop),
 _fill(rhs._fill),
 _size(rhs._size),
+_size_expr(rhs._size_expr),
+_size_expr_result(rhs._size_expr_result),
 _smooth(rhs._smooth)
 {
 }
@@ -35,6 +37,8 @@ PointSymbol::PointSymbol( const Config& conf ) :
 Symbol( conf ),
 _fill ( Fill() ), 
 _size ( 1.0 ),
+_size_expr(),
+_size_expr_result(""),
 _smooth( false )
 {
     mergeConfig(conf);
@@ -48,6 +52,7 @@ PointSymbol::getConfig() const
     conf.set( "fill", _fill );
     conf.set( "size", _size );
     conf.set( "size_expr", _size_expr.get().expr() );
+    conf.set( "_size_expr_result", _size_expr_result );
     conf.set( "smooth", _smooth );
     return conf;
 }
@@ -58,9 +63,9 @@ PointSymbol::mergeConfig( const Config& conf )
     conf.get( "fill", _fill );
     conf.get( "size", _size );
     _size_expr = StringExpression( conf.value("size_expr") );
+    _size_expr_result = conf.value( "_size_expr_result" );
     conf.get( "smooth", _smooth );
 }
-
 
 void
 PointSymbol::parseSLD(const Config& c, Style& style)

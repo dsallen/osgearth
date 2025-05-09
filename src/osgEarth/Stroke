@@ -62,15 +62,11 @@ namespace osgEarth
         /** Line color. */
         Color& color() { return _color; }
         optional<StringExpression> colorExpr() { return _color_expr; }
+        std::string& colorExprResult() { return _color_expr_result; }
         Color color() const
         {
-           if (_color_expr.get().expr() != "")
-           {
-              std::string scolor = _color_expr.get().eval();
-              if (scolor != "")
-                 return Color(scolor, Color::Format::RGBA);
-           }
-
+           if (_color_expr_result != "")
+               return Color(_color_expr_result, Color::Format::RGBA);
            return _color;
         }
 
@@ -85,13 +81,14 @@ namespace osgEarth
         /** Line rendering width. */
         optional<float>& width() { return _width; }
         optional<StringExpression>& widthExpr() { return _width_expr; }
+        std::string& widthExprResult() { return _width_expr_result; }
         optional<float> width() const
         {
-           if (_width_expr.get().expr() != "")
+           if (_width_expr_result != "")
            {
-              std::string swidth = _width_expr.get().eval();
-              if (swidth != "")
-                 return std::stof(swidth);
+              float w = std::stof(_width_expr_result);
+              if (w > 0.0f)
+                 return w;
            }
 
            return _width;
@@ -141,10 +138,12 @@ namespace osgEarth
     protected:
         Color                    _color;
         optional<StringExpression> _color_expr;
+        std::string              _color_expr_result;
         optional<LineCapStyle>   _lineCap;
         optional<LineJoinStyle>  _lineJoin;
         optional<float>          _width;
         optional<StringExpression> _width_expr;
+        std::string              _width_expr_result;
         optional<UnitsType>      _widthUnits;
         optional<unsigned>       _stippleFactor;
         optional<unsigned short> _stipplePattern;

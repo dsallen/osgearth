@@ -1644,6 +1644,10 @@ FeatureModelGraph::build(
         }
 
         // if no selectors are present, render all the features with a single style.
+        // update scottm 05/09/2025
+        // if some of the optional style expressions are set, we must now
+        // embed the styles because each feature will  need to have its style
+        // expressions evaluated with the feature and the resulting style embedded with the style
         else
         {
             Style combinedStyle = defaultStyle;
@@ -1652,10 +1656,111 @@ FeatureModelGraph::build(
             if (defaultStyle.empty())
                 combinedStyle = *styles->getDefaultStyle();
 
-            osg::Group* styleGroup = createStyleGroup(combinedStyle, baseQuery, index, readOptions, progress);
+            // do we need to embed styles?
+            // if the style has expressions set, then yes
+            bool needs_embed =
+               (
+                  combinedStyle.has<PointSymbol>() &&
+                     (combinedStyle.get<PointSymbol>()->sizeExpr().isSet() ||
+                      (combinedStyle.get<PointSymbol>()->fill().isSet() &&
+                       combinedStyle.get<PointSymbol>()->fill()->colorExpr().isSet())
+                     )
+               ) ||
+               (
+                  combinedStyle.has<LineSymbol>() &&
+                  combinedStyle.get<LineSymbol>()->stroke().isSet() &&
+                  (
+                     combinedStyle.get<LineSymbol>()->stroke()->colorExpr().isSet() ||
+                     combinedStyle.get<LineSymbol>()->stroke()->widthExpr().isSet()
+                  )
+               ) ||
+               (
+                  combinedStyle.has<PolygonSymbol>() &&
+                  combinedStyle.get<PolygonSymbol>()->fill().isSet() &&
+                  combinedStyle.get<PolygonSymbol>()->fill()->colorExpr().isSet()
+               );
 
-            if (styleGroup && !group->containsNode(styleGroup))
-                group->addChild(styleGroup);
+            if (needs_embed)
+            {
+               const FeatureProfile* featureProfile = source->getFeatureProfile();
+               FilterContext context(_session.get(), featureProfile, workingExtent, index);
+               osg::ref_ptr<FeatureCursor> cursor = source->createFeatureCursor(baseQuery, _filterChain, &context, progress);
+               while (cursor.valid() && cursor->hasMore())
+               {
+                   Style style = Style(combinedStyle);
+                   Feature* feature = cursor->nextFeature();
+                   if (feature)
+                   {
+                       // eval the style expressions if they are set
+                       PointSymbol* ps = style.getOrCreateSymbol<PointSymbol>();
+                       if (ps->sizeExpr().isSet())
+                          ps->sizeExprResult() = feature->eval(
+                              ps->sizeExpr().mutable_value(),
+                              &context);
+                       if (ps->fill().isSet() && ps->fill()->colorExpr().isSet())
+                          ps->fill()->colorExprResult() = feature->eval(
+                           ps->fill()->colorExpr().mutable_value(),
+                           &context);
+                       LineSymbol* ls = style.getOrCreateSymbol<LineSymbol>();
+                       if (ls->stroke().isSet() && ls->stroke()->widthExpr().isSet())
+                          ls->stroke()->widthExprResult() = feature->eval(
+                           ls->stroke()->widthExpr().mutable_value(),
+                           &context);
+                       if (ls->stroke().isSet() && ls->stroke()->colorExpr().isSet())
+                          ls->stroke()->colorExprResult() = feature->eval(
+                           ls->stroke()->colorExpr().mutable_value(),
+                           &context);
+                       PolygonSymbol* poly = style.getOrCreateSymbol<PolygonSymbol>();
+                       if (poly->fill().isSet() && poly->fill()->colorExpr().isSet())
+                          poly->fill()->colorExprResult() = feature->eval(
+                           poly->fill()->colorExpr().mutable_value(),
+                           &context);
+                       feature->style() = style;
+
+                       FeatureList list;
+                       list.push_back(feature);
+                       osg::ref_ptr<FeatureCursor> cursor = new FeatureListCursor(list);
+                       osg::ref_ptr<osg::Node> node;
+                       osg::Group* styleGroup = getOrCreateStyleGroupFromFactory(*feature->style());
+                       if (styleGroup)
+                       {
+                           if (!group->containsNode(styleGroup))
+                               group->addChild(styleGroup);
+                       }
+
+                       if (createOrUpdateNode(
+                           cursor.get(),
+                           *feature->style(),
+                           context,
+                           readOptions,
+                           node,
+                           baseQuery))
+                       {
+                           if (node.valid())
+                           {
+                               if (styleGroup)
+                                   styleGroup->addChild(node.get());
+                               else
+                                   group->addChild(node.get());
+                           }
+                       }
+                   }
+
+                   if (progress && progress->isCanceled())
+                       return NULL;
+               }
+            }
+            else
+            {
+               // since no style expressions were set we can safely do the "old" way
+               osg::Group* styleGroup = createStyleGroup(
+                  combinedStyle,
+                  baseQuery,
+                  index,
+                  readOptions, progress);
+               if (styleGroup && !group->containsNode(styleGroup))
+                  group->addChild(styleGroup);
+            }
         }
     }
 

@@ -286,6 +286,10 @@ TFSFeatureSource::createFeatureCursorImplementation(const Query& query, Progress
     if (url.empty())
         return 0L;
 
+    if (url.find("sweden_assets") != std::string::npos) {
+       OE_INFO << LC << url << std::endl;
+    }
+
     OE_DEBUG << LC << url << std::endl;
     URI uri(url, options().url()->context());
 
