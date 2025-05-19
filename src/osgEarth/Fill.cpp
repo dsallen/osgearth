@@ -61,7 +61,7 @@ void
 Fill::init()
 {
     _color.set( 1.0f, 1.0f, 1.0f, 1.0f );
-    _expr = StringExpression(std::string(""));
+    _expr.init(StringExpression(std::string("")));
     _expr_result = std::string("");
 }
 

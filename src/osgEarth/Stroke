@@ -61,7 +61,7 @@ namespace osgEarth
 
         /** Line color. */
         Color& color() { return _color; }
-        optional<StringExpression> colorExpr() { return _color_expr; }
+        optional<StringExpression>& colorExpr() { return _color_expr; }
         std::string& colorExprResult() { return _color_expr_result; }
         Color color() const
         {

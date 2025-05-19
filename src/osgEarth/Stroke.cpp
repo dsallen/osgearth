@@ -55,12 +55,12 @@ void
 Stroke::init()
 {
     _color.set          ( 1.0f, 1.0f, 1.0f, 1.0f );
-    _color_expr = StringExpression(std::string(""));
+    _color_expr.init(StringExpression(std::string("")));
     _color_expr_result = std::string("");
     _lineCap.init       ( LINECAP_FLAT );
     _lineJoin.init      ( LINEJOIN_ROUND );
     _width.init         ( 1.0f );
-    _width_expr = StringExpression(std::string(""));
+    _width_expr.init(StringExpression(std::string("")));
     _width_expr_result = std::string("");
     _widthUnits.init    ( Units::PIXELS );
     _roundingRatio.init ( 0.4f );

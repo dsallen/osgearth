@@ -1692,29 +1692,31 @@ FeatureModelGraph::build(
                    if (feature)
                    {
                        // eval the style expressions if they are set
-                       PointSymbol* ps = style.getOrCreateSymbol<PointSymbol>();
-                       if (ps->sizeExpr().isSet())
-                          ps->sizeExprResult() = feature->eval(
-                              ps->sizeExpr().mutable_value(),
-                              &context);
-                       if (ps->fill().isSet() && ps->fill()->colorExpr().isSet())
-                          ps->fill()->colorExprResult() = feature->eval(
-                           ps->fill()->colorExpr().mutable_value(),
-                           &context);
-                       LineSymbol* ls = style.getOrCreateSymbol<LineSymbol>();
-                       if (ls->stroke().isSet() && ls->stroke()->widthExpr().isSet())
-                          ls->stroke()->widthExprResult() = feature->eval(
-                           ls->stroke()->widthExpr().mutable_value(),
-                           &context);
-                       if (ls->stroke().isSet() && ls->stroke()->colorExpr().isSet())
-                          ls->stroke()->colorExprResult() = feature->eval(
-                           ls->stroke()->colorExpr().mutable_value(),
-                           &context);
-                       PolygonSymbol* poly = style.getOrCreateSymbol<PolygonSymbol>();
-                       if (poly->fill().isSet() && poly->fill()->colorExpr().isSet())
-                          poly->fill()->colorExprResult() = feature->eval(
-                           poly->fill()->colorExpr().mutable_value(),
-                           &context);
+                       if (style.has<PointSymbol>())
+                       {
+                          PointSymbol* ps = style.get<PointSymbol>();
+                          if (ps->sizeExpr().isSet())
+                             ps->sizeExprResult() = feature->eval(ps->sizeExpr().mutable_value(), &context);
+                          if (ps->fill().isSet() && ps->fill()->colorExpr().isSet())
+                             ps->fill()->colorExprResult() = feature->eval(ps->fill()->colorExpr().mutable_value(), &context);
+                       }
+
+                       if (style.has<LineSymbol>())
+                       {
+                          LineSymbol* ls = style.get<LineSymbol>();
+                          if (ls->stroke().isSet() && ls->stroke()->widthExpr().isSet())
+                             ls->stroke()->widthExprResult() = feature->eval(ls->stroke()->widthExpr().mutable_value(), &context);
+                          if (ls->stroke().isSet() && ls->stroke()->colorExpr().isSet())
+                             ls->stroke()->colorExprResult() = feature->eval(ls->stroke()->colorExpr().mutable_value(), &context);
+                       }
+
+                       if (style.has<PolygonSymbol>())
+                       {
+                          PolygonSymbol* poly = style.get<PolygonSymbol>();
+                          if (poly->fill().isSet() && poly->fill()->colorExpr().isSet())
+                             poly->fill()->colorExprResult() = feature->eval(poly->fill()->colorExpr().mutable_value(), &context);
+                       }
+
                        feature->style() = style;
 
                        FeatureList list;
@@ -1749,7 +1751,7 @@ FeatureModelGraph::build(
                    if (progress && progress->isCanceled())
                        return NULL;
                }
-            }
+            }  // if (needs_embed)
             else
             {
                // since no style expressions were set we can safely do the "old" way
