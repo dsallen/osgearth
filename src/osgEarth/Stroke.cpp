@@ -56,12 +56,10 @@ Stroke::init()
 {
     _color.set          ( 1.0f, 1.0f, 1.0f, 1.0f );
     _color_expr.init(StringExpression(std::string("")));
-    _color_expr_result = std::string("");
     _lineCap.init       ( LINECAP_FLAT );
     _lineJoin.init      ( LINEJOIN_ROUND );
     _width.init         ( 1.0f );
-    _width_expr.init(StringExpression(std::string("")));
-    _width_expr_result = std::string("");
+    _width_expr.init(NumericExpression(1.0f));
     _widthUnits.init    ( Units::PIXELS );
     _roundingRatio.init ( 0.4f );
     _minPixels.init     ( 0.0f );
@@ -74,16 +72,16 @@ Config
 Stroke::getConfig() const {
     Config conf("stroke");
     conf.set( "color", _color.toHTML() );
-    conf.set( "color_expr", _color_expr.get().expr() );
-    conf.set( "color_expr_result", _color_expr_result );
+    if( _color_expr.isSet() )
+       conf.set( "color_expr", _color_expr.get().expr() );
     conf.set("linecap", "flat",   _lineCap, LINECAP_FLAT);
     conf.set("linecap", "square", _lineCap, LINECAP_SQUARE);
     conf.set("linecap", "round",  _lineCap, LINECAP_ROUND);
     conf.set("linejoin", "mitre", _lineJoin, LINEJOIN_MITRE);
     conf.set("linejoin", "round", _lineJoin, LINEJOIN_ROUND);
     conf.set("width", _width);
-    conf.set("width_expr", _width_expr.get().expr() );
-    conf.set("width_expr_result", _width_expr_result );
+    if( _width_expr.isSet() )
+       conf.set("width_expr", _width_expr.get().expr() );
     conf.set("stipple_factor", _stippleFactor);
     conf.set("stipple_pattern", _stipplePattern);
     conf.set("rounding_ratio", _roundingRatio);
@@ -99,8 +97,8 @@ Stroke::getConfig() const {
 void 
 Stroke::mergeConfig( const Config& conf ) {
     _color = Color( conf.value("color") );
-    _color_expr = StringExpression( conf.value("color_expr") );
-    _color_expr_result = conf.value( "color_expr_result" );
+   if( conf.hasValue("color_expr"))
+       _color_expr = StringExpression( conf.value("color_expr") );
     conf.get("linecap", "flat",   _lineCap, LINECAP_FLAT);
     conf.get("linecap", "square", _lineCap, LINECAP_SQUARE);
     conf.get("linecap", "round",  _lineCap, LINECAP_ROUND);
@@ -108,8 +106,8 @@ Stroke::mergeConfig( const Config& conf ) {
     conf.get("linejoin", "miter", _lineJoin, LINEJOIN_MITRE); // alternate spelling
     conf.get("linejoin", "round", _lineJoin, LINEJOIN_ROUND);
     conf.get("width", _width);
-    _width_expr = StringExpression( conf.value("width_expr") );
-    _width_expr_result = conf.value( "width_expr_result" );
+    if( conf.hasValue("width_expr") )
+      _width_expr = NumericExpression( conf.value("width_expr") );
     conf.get("stipple", _stipplePattern); // back compat
     conf.get("stipple_factor", _stippleFactor);
     conf.get("stipple_pattern", _stipplePattern);

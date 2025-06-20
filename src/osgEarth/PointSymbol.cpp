@@ -28,9 +28,10 @@ Symbol(rhs, copyop),
 _fill(rhs._fill),
 _size(rhs._size),
 _size_expr(rhs._size_expr),
-_size_expr_result(rhs._size_expr_result),
 _smooth(rhs._smooth)
 {
+    _size_expr.init(NumericExpression("1.0"));
+    mergeConfig(rhs.getConfig());
 }
 
 PointSymbol::PointSymbol( const Config& conf ) :
@@ -38,9 +39,9 @@ Symbol( conf ),
 _fill ( Fill() ), 
 _size ( 1.0 ),
 _size_expr(),
-_size_expr_result(""),
 _smooth( false )
 {
+    _size_expr.init(NumericExpression("1.0"));
     mergeConfig(conf);
 }
 
@@ -51,8 +52,8 @@ PointSymbol::getConfig() const
     conf.key() = "point";
     conf.set( "fill", _fill );
     conf.set( "size", _size );
-    conf.set( "size_expr", _size_expr.get().expr() );
-    conf.set( "_size_expr_result", _size_expr_result );
+    if( _size_expr.isSet() )
+       conf.set( "size_expr", _size_expr.get().expr() );
     conf.set( "smooth", _smooth );
     return conf;
 }
@@ -62,8 +63,8 @@ PointSymbol::mergeConfig( const Config& conf )
 {
     conf.get( "fill", _fill );
     conf.get( "size", _size );
-    _size_expr = StringExpression( conf.value("size_expr") );
-    _size_expr_result = conf.value( "_size_expr_result" );
+    if( conf.hasValue("size_expr") )
+       _size_expr = NumericExpression(conf.value("size_expr"));
     conf.get( "smooth", _smooth );
 }
 

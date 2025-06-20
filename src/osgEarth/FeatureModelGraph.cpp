@@ -1696,25 +1696,45 @@ FeatureModelGraph::build(
                        {
                           PointSymbol* ps = style.get<PointSymbol>();
                           if (ps->sizeExpr().isSet())
-                             ps->sizeExprResult() = feature->eval(ps->sizeExpr().mutable_value(), &context);
-                          if (ps->fill().isSet() && ps->fill()->colorExpr().isSet())
-                             ps->fill()->colorExprResult() = feature->eval(ps->fill()->colorExpr().mutable_value(), &context);
+                             ps->size() = feature->eval(ps->sizeExpr().mutable_value(), &context);
+
+                         if (ps->fill().isSet() && ps->fill()->colorExpr().isSet() )
+                         {
+                            std::string clr = feature->eval(ps->fill()->colorExpr().mutable_value(), &context);
+                            if( !clr.empty() )
+                               ps->fill()->color() = Color(clr, Color::Format::RGBA);
+                            else
+                               ps->fill()->color() = Color::Transparent;
+                         }
+
                        }
 
                        if (style.has<LineSymbol>())
                        {
                           LineSymbol* ls = style.get<LineSymbol>();
                           if (ls->stroke().isSet() && ls->stroke()->widthExpr().isSet())
-                             ls->stroke()->widthExprResult() = feature->eval(ls->stroke()->widthExpr().mutable_value(), &context);
+                             ls->stroke()->width() = feature->eval(ls->stroke()->widthExpr().mutable_value(), &context);
                           if (ls->stroke().isSet() && ls->stroke()->colorExpr().isSet())
-                             ls->stroke()->colorExprResult() = feature->eval(ls->stroke()->colorExpr().mutable_value(), &context);
+                          {
+                             std::string clr = feature->eval(ls->stroke()->colorExpr().mutable_value(), &context);
+                             if( !clr.empty() )
+                                ls->stroke()->color() = Color( clr, Color::Format::RGBA );
+                             else
+                                ls->stroke()->color() = Color::Transparent;
+                          }                          
                        }
 
                        if (style.has<PolygonSymbol>())
                        {
                           PolygonSymbol* poly = style.get<PolygonSymbol>();
                           if (poly->fill().isSet() && poly->fill()->colorExpr().isSet())
-                             poly->fill()->colorExprResult() = feature->eval(poly->fill()->colorExpr().mutable_value(), &context);
+                          {
+                             std::string clr = feature->eval(poly->fill()->colorExpr().mutable_value(), &context);
+                             if( !clr.empty () )
+                                poly->fill()->color() = Color(clr, Color::Format::RGBA);
+                             else
+                                poly->fill()->color() = Color::Transparent;
+                          }
                        }
 
                        feature->style() = style;
