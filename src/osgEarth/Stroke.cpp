@@ -34,6 +34,8 @@ Config
 Stroke::getConfig() const {
     Config conf("stroke");
     conf.set("color", color());
+    conf.set("color_expr", colorExpr());
+    conf.set("width_expr", widthExpr());
     conf.set("linecap", "flat", _lineCap, LINECAP_FLAT);
     conf.set("linecap", "square", _lineCap, LINECAP_SQUARE);
     conf.set("linecap", "round", _lineCap, LINECAP_ROUND);
@@ -55,6 +57,8 @@ Stroke::getConfig() const {
 void
 Stroke::mergeConfig(const Config& conf) {
     conf.get("color", color());
+    conf.get("color_expr", colorExpr());
+    conf.get("width_expr", widthExpr());
     conf.get("linecap", "flat", _lineCap, LINECAP_FLAT);
     conf.get("linecap", "square", _lineCap, LINECAP_SQUARE);
     conf.get("linecap", "round", _lineCap, LINECAP_ROUND);

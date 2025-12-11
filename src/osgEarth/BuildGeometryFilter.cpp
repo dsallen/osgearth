@@ -150,6 +150,14 @@ BuildGeometryFilter::processMeshes(FeatureList& features, FilterContext& context
 
             // resolve the color:
             auto primaryColor = poly->fill()->color();
+            if (poly->fill()->colorExpr().isSet())
+            {
+                std::string clr = input->eval(poly->fill()->colorExpr().value(), &context);
+                if (!clr.empty())
+                    primaryColor = Color(clr, Color::Format::RGBA);
+                else
+                    primaryColor = Color::Transparent;
+            }
 
             osg::ref_ptr<osg::Geometry> osgGeom = new osg::Geometry();
             osgGeom->setName(typeid(*this).name());
@@ -312,6 +320,14 @@ BuildGeometryFilter::processPolygons(FeatureList& features, FilterContext& conte
 
             // resolve the color:
             osg::Vec4f primaryColor = poly->fill()->color();
+            if (poly->fill()->colorExpr().isSet())
+            {
+                std::string clr = input->eval(poly->fill()->colorExpr().value(), &context);
+                if (!clr.empty())
+                    primaryColor = Color(clr, Color::Format::RGBA);
+                else
+                    primaryColor = Color::Transparent;
+            }
 
             osg::ref_ptr<osg::Geometry> osgGeom = new osg::Geometry();
             osgGeom->setName(typeid(*this).name());
@@ -562,6 +578,11 @@ BuildGeometryFilter::processPolygonizedLines(FeatureList&   features,
             lineWidth = line->stroke()->width()->eval(input, context);
         }
 
+        if (line->stroke().isSet() && line->stroke()->widthExpr().isSet())
+        {
+            lineWidth = Distance(input->eval(line->stroke()->widthExpr().value(), &context), Units::PIXELS);
+        }
+
         // The operator we'll use to make lines into polygons.
         osg::ref_ptr<OsgGeometryOperator> polygonizer;
         if (wireLines)
@@ -712,7 +733,11 @@ BuildGeometryFilter::processLines(FeatureList& features, FilterContext& context)
         }
 
         Distance strokeWidth(1.0, Units::PIXELS);
-        if (line->stroke()->width().isSet())
+        if (line->stroke()->widthExpr().isSet())
+        {
+            strokeWidth = Distance(input->eval(line->stroke()->widthExpr().value(), &context), Units::PIXELS);
+        }
+        else if (line->stroke()->width().isSet())
         {
             strokeWidth = line->stroke()->width()->eval(input, context);
             //strokeWidth = input->eval(line->stroke()->width().value(), &context);
@@ -733,6 +758,14 @@ BuildGeometryFilter::processLines(FeatureList& features, FilterContext& context)
 
             // resolve the color:
             osg::Vec4f primaryColor = line->stroke()->color();
+            if (line->stroke()->colorExpr().isSet())
+            {
+                std::string clr = input->eval(line->stroke()->colorExpr().value(), &context);
+                if (!clr.empty())
+                    primaryColor = Color(clr, Color::Format::RGBA);
+                else
+                    primaryColor = Color::Transparent;
+            }
 
             // generate the geometry and localize to the local tangent plane
             osg::ref_ptr< osg::Vec3Array > allPoints = new osg::Vec3Array();
@@ -860,6 +893,14 @@ BuildGeometryFilter::processPoints(FeatureList& features, FilterContext& context
 
             // resolve the color:
             osg::Vec4f primaryColor = point->fill()->color();
+            if (point->fill()->colorExpr().isSet())
+            {
+                std::string clr = input->eval(point->fill()->colorExpr().value(), &context);
+                if (!clr.empty())
+                   primaryColor = Color(clr, Color::Format::RGBA);
+                else
+                   primaryColor = Color::Transparent;
+            }
 
             // build the geometry:
             osg::ref_ptr<osg::Vec3Array> allPoints = new osg::Vec3Array();
@@ -869,7 +910,9 @@ BuildGeometryFilter::processPoints(FeatureList& features, FilterContext& context
 
             drawable->importVertexArray(allPoints.get());
 
-            if (point->size().isSet())
+            if (point->sizeExpr().isSet() )
+                drawable->setPointSize(input->eval(point->sizeExpr().value(), &context));
+            else if (point->size().isSet())
                 drawable->setPointSize(point->size().get());
 
             if (point->smooth().isSet())
@@ -1853,7 +1896,8 @@ BuildGeometryFilter::push( FeatureList& input, FilterContext& context )
 
         if (line)
         {
-            bool widthInPixels = line->stroke()->width()->eval(f, context).getUnits() == Units::PIXELS;
+            bool widthInPixels = line->stroke()->width()->eval(f, context).getUnits() == Units::PIXELS ||
+                                 line->stroke()->widthExpr().isSet();
             has_linesymbol = widthInPixels;
             has_polylinesymbol = !widthInPixels;
             has_wirelinessymbol = line->useWireLines() == true;
@@ -1868,7 +1912,8 @@ BuildGeometryFilter::push( FeatureList& input, FilterContext& context )
             auto* f_line = f->style()->get<LineSymbol>();
             if (f_line)
             {
-                bool widthInPixels = f_line->stroke()->width()->eval(f, context).getUnits() == Units::PIXELS;
+                bool widthInPixels = f_line->stroke()->width()->eval(f, context).getUnits() == Units::PIXELS ||
+                                     f_line->stroke()->widthExpr().isSet();
                 has_linesymbol = has_linesymbol || (widthInPixels == true);
                 has_polylinesymbol = has_polylinesymbol || (widthInPixels == false);
                 has_wirelinessymbol = has_wirelinessymbol || (f_line->useWireLines() == true);

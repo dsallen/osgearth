@@ -139,6 +139,7 @@ namespace osgEarth { namespace Util
         osg::ref_ptr<SceneGraphCallbacks> _sceneGraphCallbacks;
         CreateNodeFunction _createNodeFunction;
         CreatePagedNodeFunction _createPagedNodeFunction;
+        mutable ElevationPool::WorkingSet _elevationSet;
 
         void fire_onCreateNode(const TileKey& key, osg::Node* node);
     };

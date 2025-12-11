@@ -20,10 +20,10 @@ using namespace osgEarth::Util;
 
 #define LC "[SimplerPager] "
 
-
 SimplePager::SimplePager(const osgEarth::Map* map, const osgEarth::Profile* profile) :
     _map(map),
-    _profile(profile)
+    _profile(profile),
+    _elevationSet(128)
 {
     if (map)
     {
@@ -160,33 +160,60 @@ osg::BoundingSphered SimplePager::getBounds(const TileKey& key) const
     float minElevation = -100.0f;
     float maxElevation = 100.0f;
 
-    ElevationLayerVector elevationLayers;
     osg::ref_ptr<const Map> map;
     _map.lock(map);
+
     if (map.valid())
     {
-        map->getLayers<ElevationLayer>(elevationLayers);
-        if (!elevationLayers.empty())
-        {
-            // Get the approximate elevation range if we have elevation data in the map
-            lod = osg::clampBetween(lod, 0u, ElevationRanges::getMaxLevel());
-            GeoPoint centerWGS84 = center.transform(ElevationRanges::getProfile()->getSRS());
-            TileKey rangeKey = ElevationRanges::getProfile()->createTileKey(centerWGS84.x(), centerWGS84.y(), lod);
-            short min, max;
-            if (!*map->options().disableElevationRanges())
-            {
-                ElevationRanges::getElevationRange(rangeKey.getLevelOfDetail(), rangeKey.getTileX(), rangeKey.getTileY(), min, max);
-            }
-            else
-            {
-                ElevationRanges::getDefaultElevationRange(min, max);
-            }
-            // Clamp the min value to avoid extreme underwater values.
-            minElevation = osg::maximum(min, (short)-500);
-            // Add a little bit extra of extra height to account for feature data.
-            maxElevation = max + 100.0f;
-        }
+       unsigned actual_lod = lod;
+       // Get the approximate elevation range if we have elevation data in the map
+       lod = osg::clampBetween(lod, 0u, ElevationRanges::getMaxLevel());
+       GeoPoint centerWGS84 = center.transform(ElevationRanges::getProfile()->getSRS());
+
+       float elevation = NO_DATA_VALUE;
+       float sampledMin = elevation;
+       float sampledMax = elevation;
+       if( actual_lod != lod && actual_lod >= 14 )
+       {
+          ElevationSample sample = map->getElevationPool()->getSample(centerWGS84, &_elevationSet);
+          if( sample.hasData() )
+          {
+             elevation = sample.elevation().as(Units::METERS);
+             float adjust = (40000000*0.05)/pow(2.0,actual_lod);
+             sampledMin = elevation - adjust;
+             sampledMax = elevation + adjust;
+          }
+       }
+
+       TileKey rangeKey = ElevationRanges::getProfile()->createTileKey(centerWGS84.x(), centerWGS84.y(), lod);
+       short min, max;
+       if (!*map->options().disableElevationRanges())
+       {
+          ElevationRanges::getElevationRange(rangeKey.getLevelOfDetail(), rangeKey.getTileX(), rangeKey.getTileY(), min, max);
+       }
+       else
+       {
+          ElevationRanges::getDefaultElevationRange(min, max);
+       }
+
+       minElevation = (float)min;
+       maxElevation = (float)max;
+
+       if( sampledMin != NO_DATA_VALUE && sampledMin > minElevation)
+       {
+          minElevation = sampledMin;
+       }
+
+       if( sampledMax != NO_DATA_VALUE && sampledMax < maxElevation )
+       {
+          maxElevation = sampledMax;
+       }
+
+       // Clamp the values to avoid extreme underwater values.
+       minElevation = osg::maximum(minElevation, -500.0f);
+       maxElevation = osg::maximum(maxElevation, -500.0f);
     }
+
     return workingExtent.createWorldBoundingSphere(minElevation, maxElevation);
 
 }
@@ -395,7 +422,6 @@ SimplePager::createChildNode(const TileKey& key, ProgressCallback* progress)
 
         result = pagedNode;
     }
-
     else // !hasChildren
     {
         if (payload.valid())

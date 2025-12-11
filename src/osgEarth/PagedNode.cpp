@@ -60,21 +60,34 @@ PagedNode2::traverse(osg::NodeVisitor& nv)
         if (nv.getVisitorType() == nv.CULL_VISITOR)
         {
             bool inRange = false;
+            bool inRadius = false;
+            osg::CullStack* cullStack = nv.asCullStack();
+            
+            if( !cullStack->isCulled(getBound()) )
+            {
+                float range = std::max(0.0f, nv.getDistanceToViewPoint(getBound().center(), _minPixels<=0) - getBound().radius());
 
-            if (_useRange) // meters
-            {
-                float range = std::max(0.0f, nv.getDistanceToViewPoint(getBound().center(), true) - getBound().radius());
+                if( isinf(range))
+                   range = FLT_MAX;
+                else if( range <= 0.0 )
+                   inRadius = true;
+
                 inRange = (range >= _minRange && range <= _maxRange);
-                _priority = -range * _priorityScale;
+                if( _minPixels <= 0 )
+                   _priority = -range * _priorityScale;
             }
-            else // pixels
+
+            if( inRange && _minPixels > 0 && !inRadius) // pixels
             {
-                osg::CullStack* cullStack = nv.asCullStack();
                 if (cullStack != nullptr && cullStack->getLODScale() > 0.0f)
                 {
                     float sse = _pagingManager_weak.valid() ? _pagingManager_weak->sse() : 1.0f;
                     float pixels = cullStack->clampedPixelSize(getBound()) / cullStack->getLODScale();
-                    inRange = (pixels >= _minPixels*sse && pixels <= _maxPixels*sse);
+
+                    if( isinf(pixels) )
+                       pixels = FLT_MAX;
+
+                    inRange = (pixels >= _minPixels+sse && pixels <= _maxPixels+sse);
                     _priority = pixels * _priorityScale;
                 }
             }

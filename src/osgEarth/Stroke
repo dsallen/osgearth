@@ -44,6 +44,7 @@ namespace osgEarth
 
         /** Line color. */
         OE_PROPERTY(Color, color, Color::White);
+        OE_OPTION(StringExpression, colorExpr);
 
         /** Capping of line ends. */
         OE_OPTION(LineCapStyle, lineCap, LINECAP_FLAT);
@@ -52,6 +53,7 @@ namespace osgEarth
         OE_OPTION(LineJoinStyle, lineJoin, LINEJOIN_ROUND);
 
         /** Line rendering width. */
+        OE_OPTION(NumericExpression, widthExpr);
         OE_OPTION(Expression<Distance>, width, { "1px" });
 
         /** Units for the width property. (default = Units::PIXELS) */
@@ -84,8 +86,8 @@ namespace osgEarth
         OE_OPTION(Expression<Distance>, outlineWidth, { "1px" });
 
     public:
-        Config getConfig() const;
-        void mergeConfig(const Config& conf);
+        virtual Config getConfig() const;
+        virtual void mergeConfig(const Config& conf);
     };
 } // namespace osgEarth
 

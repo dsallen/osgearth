@@ -484,6 +484,10 @@ namespace osgEarth { namespace Util
             bool getZoomToMouse() const { return _zoomToMouse; }
             bool& zoomToMouse() { return _zoomToMouse; }
 
+            /** Allow multitouch drag events to be combined with pinch/twist in the same gesture */
+            void setAllowTouchDragCombos(bool value) { _allowTouchDragCombos = value; }
+            bool getAllowTouchDragCombos() const { return _allowTouchDragCombos; }
+
         private:
 
             friend class EarthManipulator;
@@ -531,6 +535,7 @@ namespace osgEarth { namespace Util
             double _throwDecayRate;
 
             bool _zoomToMouse;
+            bool _allowTouchDragCombos;
         };
 
     public:

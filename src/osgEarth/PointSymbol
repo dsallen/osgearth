@@ -31,6 +31,8 @@ namespace osgEarth
         /** Point size property */
         optional<float>& size() { return _size; }
         const optional<float>& size() const { return _size; }
+        optional<NumericExpression>& sizeExpr() { return _size_expr; }
+        const optional<NumericExpression>& sizeExpr() const { return _size_expr; }
 
         /** Smoothing (antialiasing/rounding) */
         optional<bool>& smooth() { return _smooth; }
@@ -44,6 +46,7 @@ namespace osgEarth
     protected:
         optional<Fill>  _fill;
         optional<float> _size;
+        optional<NumericExpression> _size_expr;
         optional<bool>  _smooth;
     };
 } // namespace osgEarth
