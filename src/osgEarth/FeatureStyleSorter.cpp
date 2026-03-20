@@ -279,6 +279,13 @@ FeatureStyleSorter::getFeatures(
     OE_SOFT_ASSERT_AND_RETURN(session->getFeatureSource()->getFeatureProfile() != nullptr, void());
     OE_SOFT_ASSERT_AND_RETURN(workingExtent.isValid(), void());
 
+    bool fallback = true;
+    TiledFeatureSource* tfs = dynamic_cast<TiledFeatureSource*>(session->getFeatureSource());
+    if( tfs != nullptr )
+    {
+       fallback = false;
+    }
+
     // first we need the overall extent of the layer:
     const GeoExtent& featuresExtent = session->getFeatureSource()->getFeatureProfile()->getExtent();
 
@@ -329,7 +336,8 @@ FeatureStyleSorter::getFeatures(
             }
 
             // If we didn't get any features and we have a tilekey set, try falling back.
-            if (features.empty() &&
+            if (fallback &&
+                features.empty() &&
                 localQuery.tileKey().isSet() &&
                 localQuery.tileKey()->valid())
             {
