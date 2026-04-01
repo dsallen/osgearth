@@ -255,14 +255,14 @@ LabelNode::updateLayoutData()
     _geoPointProj.set(osgEarth::SpatialReference::get("wgs84"),
         osg::RadiansToDegrees(longRad),
         osg::RadiansToDegrees(latRad),
-        0,
+        location.alt(),
         osgEarth::ALTMODE_ABSOLUTE);
 
     _geoPointLoc.set(osgEarth::SpatialReference::get("wgs84"),
         //location.getSRS(),
         location.x(),
         location.y(),
-        0,
+        location.alt(),
         osgEarth::ALTMODE_ABSOLUTE);
 
     const TextSymbol* ts = getStyle().get<TextSymbol>();
