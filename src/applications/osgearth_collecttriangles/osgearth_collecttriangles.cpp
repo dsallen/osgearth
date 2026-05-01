@@ -19,7 +19,7 @@
 * You should have received a copy of the GNU Lesser General Public License
 * along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
-#include <osgEarth/ImGui/ImGuiApp>
+#include <osgEarthImGui/ImGuiApp>
 
 #include <osgViewer/Viewer>
 #include <osgEarth/Notify>
@@ -1240,7 +1240,8 @@ protected:
         {
             osg::ref_ptr< Observer > observer = itr->get();
             ImGui::PushID(observer.get());
-            ImGui::Text(observer->getName().c_str()); ImGui::SameLine();
+            ImGui::Text("%s", observer->getName().c_str());
+            ImGui::SameLine();
             if (ImGui::Button("Delete"))
             {
                 observers.erase(itr);
@@ -1315,7 +1316,6 @@ main(int argc, char** argv)
         MapNode* mapNode = MapNode::get(node);
         if (mapNode)
         {
-            //viewer.getEventHandlers().push_front(new MyGUI(&viewer, mapNode, manip));
             auto gui = new ImGuiAppEngine(arguments);
             gui->add(new TrianglesGUI(&viewer, mapNode, manip));
             gui->add(new LoadableNodesGUI());

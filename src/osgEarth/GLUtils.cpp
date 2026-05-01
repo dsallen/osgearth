@@ -483,6 +483,12 @@ CustomRealizeOperation::operator()(osg::Object* object)
             gl.DebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_HIGH, 0, nullptr, GL_TRUE);
         }
     }
+
+    for(auto& op : _moreOperations)
+    {
+        if (op.valid())
+            (*op)(object);
+    }
 }
 
 void
@@ -850,7 +856,7 @@ GLBuffer::GLBuffer(GLenum target, osg::State& state) :
     if (name() == 0)
     {
         GLenum e = glGetError();
-        OE_INFO << "OpenGL error " << e << std::endl;
+        OE_FATAL << "OpenGL error " << e << std::endl;
         OE_HARD_ASSERT(name() != 0);
     }
 }

@@ -132,11 +132,17 @@ namespace osgEarth
 
                 GeoCoverage<T> result;
 
-                if (!readFromCache(key, result, progress))
-                {
-                    populate(result, key, progress);
-                    writeToCache(key, result, progress);
-                }
+                // got something from the cache? return it
+                if (readFromCache(key, result, progress))
+                    return result;
+                
+                // nothing in the cache, but we're cache-only, so fail silently
+                if (_layer->getCacheSettings()->cachePolicy()->isCacheOnly())
+                    return result;
+
+                // populate the result (and write it to the cache if necessary)
+                populate(result, key, progress);
+                writeToCache(key, result, progress);
 
                 return result;
             }
@@ -155,7 +161,6 @@ namespace osgEarth
                         Config conf;
                         conf.fromJSON(r.getString());
                         result.setConfig(conf);
-                        OE_DEBUG << _layer->getName() << " " << key.str() << " read from mem cache" << std::endl;
                         return true;
                     }
                 }
@@ -181,7 +186,6 @@ namespace osgEarth
                         Config conf;
                         conf.fromJSON(r.getString());
                         result.setConfig(conf);
-                        OE_DEBUG << _layer->getName() << " " << key.str() << " read from disk cache" << std::endl;
                         return true;
                     }
                 }
@@ -211,7 +215,6 @@ namespace osgEarth
                     Config conf = result.getConfig();
                     so = new StringObject(conf.toJSON(false));
                     bin->write(memCacheKey, so.get(), nullptr);
-                    OE_DEBUG << _layer->getName() << " " << key.str() << " write to mem cache" << std::endl;
                 }
 
                 // If we got a result, the cache is valid and we are caching in the map profile,
@@ -226,7 +229,6 @@ namespace osgEarth
                         so = new StringObject(conf.toJSON(false));
                     }
                     cacheBin->write(cacheKey, so.get(), nullptr);
-                    OE_DEBUG << _layer->getName() << " " << key.str() << " write to disk cache" << std::endl;
                 }
             }
 

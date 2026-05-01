@@ -143,6 +143,14 @@ DebugImageLayer::init()
     }
 }
 
+void
+DebugImageLayer::setProfile(const Profile* profile)
+{
+    OE_SOFT_ASSERT_AND_RETURN(!isOpen(), void(), "Cannot set profile after layer is open");
+
+    super::setProfile(profile);
+}
+
 Status
 DebugImageLayer::openImplementation()
 {
@@ -152,12 +160,22 @@ DebugImageLayer::openImplementation()
 
     _color = osgEarth::htmlColorToVec4f(options().colorCode().get());
 
-    if (!getProfile())
-    {
-        setProfile( Profile::create(Profile::GLOBAL_GEODETIC) );
-    }
+    //if (!getProfile())
+    //{
+    //    setProfile( Profile::create(Profile::GLOBAL_GEODETIC) );
+    //}
 
     return Status::NoError;
+}
+
+void
+DebugImageLayer::addedToMap(const Map* map)
+{
+    if (!getProfile())
+    {
+        setProfile(map->getProfile());
+    }
+    super::addedToMap(map);
 }
 
 GeoImage

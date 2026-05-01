@@ -8,6 +8,10 @@ You can install osgEarth on Windows manually using this command:
 ```
 vcpkg install osgearth:x64-windows
 ```
+If you also want the command-line tools (like `osgearth_imgui`) use this
+```
+vcpkg install osgearth[tools]:x64-windows
+```
 Then you must set up your CMake configuration to point at the installed libraries.
 
 ### Method 2: Use the vcpkg toolchain
@@ -50,15 +54,10 @@ cmake <build_dir>
 ## Sample CMakeLists.txt
 ```cmake
 cmake_minimum_required(VERSION 3.20)
-
 project(myApp)
-
 find_package(osgEarth CONFIG REQUIRED)
-
 add_executable(myApp main.cpp)
-
-target_link_libraries(myApp PRIVATE osgEarth)
-
+target_link_libraries(myApp PRIVATE osgEarth::osgEarth)
 install(TARGETS myApp RUNTIME DESTINATION bin)
 ```
 
@@ -67,7 +66,6 @@ install(TARGETS myApp RUNTIME DESTINATION bin)
 #include <osgEarth/MapNode>
 #include <osgEarth/TMS>
 #include <osgEarth/EarthManipulator>
-
 #include <osg/ArgumentParser>
 #include <osgViewer/Viewer>
 

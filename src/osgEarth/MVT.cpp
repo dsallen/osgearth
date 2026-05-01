@@ -256,7 +256,7 @@ namespace osgEarth { namespace MVT
 
                     // Close the ring.
                     currentRing->close();
-
+                    
                     // New polygon
                     if (area > 0)
                     {
@@ -276,7 +276,7 @@ namespace osgEarth { namespace MVT
                         {
                             // this means we encountered a "hole" without a parent outer ring,
                             // discard for now -gw
-                            OE_INFO << LC << "Discarding improperly wound polygon (hole without an outer ring)\n";
+                            OE_DEBUG << LC << "Discarding improperly wound polygon (hole without an outer ring)\n";
                         }
                     }
 
@@ -388,9 +388,12 @@ namespace osgEarth { namespace MVT
                         {
                             std::string other_tags = value.string_value();
 
-                            StringTokenizer tok("=>");
-                            StringVector tized;
-                            tok.tokenize(other_tags, tized);
+                            auto tized = StringTokenizer()
+                                .delim("=")
+                                .delim(">")
+                                .standardQuotes()
+                                .tokenize(other_tags);
+
                             if (tized.size() == 3)
                             {
                                 if (tized[0] == "height")
@@ -437,12 +440,14 @@ namespace osgEarth { namespace MVT
                     }
                     else
                     {
+                        OE_SOFT_ASSERT(false, "MVT: unsupported geometry type \"" << feature.type() << "\"");
                         geometry = decodeLine(feature, key, layer.extent());
                     }
 
                     if (geometry)
                     {
-                        oeFeature->setGeometry( geometry.get() );
+                        oeFeature->setFID(feature.id());
+                        oeFeature->setGeometry(geometry.get());
                         features.push_back(oeFeature.get());
                     }
 
@@ -750,13 +755,13 @@ MVTFeatureSource::createFeatureProfile()
     if (!options().minLevel().isSet() || !options().maxLevel().isSet())
     {
         computeLevels();
-        OE_INFO << LC << "Got levels from database " << _minLevel << ", " << _maxLevel << std::endl;
+        OE_DEBUG << LC << "Got levels from database " << _minLevel << ", " << _maxLevel << std::endl;
     }
     else
     {
         _minLevel = *options().minLevel();
         _maxLevel = *options().maxLevel();
-        OE_INFO << LC << "Got levels from setting " << _minLevel << ", " << _maxLevel << std::endl;
+        OE_DEBUG << LC << "Got levels from setting " << _minLevel << ", " << _maxLevel << std::endl;
     }
 
     result->setFirstLevel(_minLevel);

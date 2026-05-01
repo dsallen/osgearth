@@ -16,13 +16,12 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
-
-#ifndef OSGEARTH_UTIL_DEBUG_IMAGE_LAYER_H
-#define OSGEARTH_UTIL_DEBUG_IMAGE_LAYER_H
+#pragma once
 
 #include <osgEarth/Common>
 #include <osgEarth/ImageLayer>
 #include <osgEarth/Geometry>
+#include <osgEarth/Map>
 #include <osgText/Font>
 
 using namespace osgEarth;
@@ -52,14 +51,13 @@ namespace osgEarth { namespace Util
 
     public: // Layer
 
-        //! Called by constructors
-        virtual void init();
-        
-        //! Establishes a connection to the WMS service
-        virtual Status openImplementation();
+        void init() override;
+        Status openImplementation() override;
+        void addedToMap(const Map* map) override;
+        GeoImage createImageImplementation(const TileKey& key, ProgressCallback* progress) const override;
 
-        //! Gets a raster image for the given tile key
-        virtual GeoImage createImageImplementation(const TileKey& key, ProgressCallback* progress) const;
+        //! Allow the user to directly set the profile before opening the layer
+        void setProfile(const Profile* profile) override;
 
     protected:
 
@@ -75,6 +73,3 @@ namespace osgEarth { namespace Util
 } }
 
 OSGEARTH_SPECIALIZE_CONFIG(osgEarth::Util::DebugImageLayer::Options);
-
-
-#endif // OSGEARTH_UTIL_DEBUG_IMAGE_LAYER_H

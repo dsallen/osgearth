@@ -248,7 +248,6 @@ XmlElement::getConfig(const std::string& referrer) const
         URIContext uriContext(referrer);
         URI uri(href, uriContext);
         const std::string& fullURI = uri.full();
-        //OE_DEBUG << "Loading href from " << fullURI << std::endl;
 
         osg::ref_ptr< XmlDocument > doc = XmlDocument::load(fullURI);
         if (doc && doc->getChildren().size() > 0)
@@ -474,8 +473,11 @@ XmlDocument::load( std::istream& in, const URIContext& uriContext )
         OE_WARN << xmlDoc.ErrorDesc() << " (row " << xmlDoc.ErrorRow() << ", col " << xmlDoc.ErrorCol() << ")" << std::endl;
 
         // print some context
-        StringVector output;
-        StringTokenizer lines(xmlStr, output, "\n", "", true, false);
+        auto output = StringTokenizer()
+            .delim("\n")
+            .trimTokens(false)
+            .tokenize(xmlStr);
+
         int startLine = osg::maximum(0, xmlDoc.ErrorRow()-12);
         int endLine = osg::minimum((int)(output.size())-1, xmlDoc.ErrorRow()+4);
         for(int i=startLine; i<=endLine; ++i)

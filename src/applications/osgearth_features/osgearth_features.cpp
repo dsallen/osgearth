@@ -151,7 +151,7 @@ int main(int argc, char** argv)
 
     LineSymbol* ls = style.getOrCreateSymbol<LineSymbol>();
     ls->stroke().mutable_value().color() = Color::Yellow;
-    ls->stroke().mutable_value().width() = 2.0f;
+    ls->stroke().mutable_value().width() = Distance(2.0f, Units::PIXELS);
     ls->tessellationSize() = Distance(100, Units::KILOMETERS);
 
     if (useDraping)
@@ -170,7 +170,7 @@ int main(int argc, char** argv)
         ls->tessellationSize()  = Distance(100, Units::KILOMETERS);
 
         RenderSymbol* render = style.getOrCreate<RenderSymbol>();
-        render->depthOffset().mutable_value().enabled() = true;
+        render->depthOffset().mutable_value().automatic() = true;
     }
 
     if (useRaster)

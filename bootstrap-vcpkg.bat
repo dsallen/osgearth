@@ -2,11 +2,15 @@
 setlocal
 set ERROR_MSG=
 
+if "%VCPKG_ROOT%" == "" (
+    FOR /F "tokens=*" %%X IN ('where vcpkg.exe') do (SET VCPKG_ROOT=%%~dpX)
+)
+
 :: Verify vcpkg is available
-set VCPKG_TOOLCHAIN_FILE=%VCPKG_DIR%\scripts\buildsystems\vcpkg.cmake
+set VCPKG_TOOLCHAIN_FILE="%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake"
 
 if not exist %VCPKG_TOOLCHAIN_FILE% (
-    set ERROR_MSG=Please set the VCPKG_DIR environment variable to your vcpkg install location
+    set ERROR_MSG=Cannot find vcpkg. Please ensure vcpkg.exe is in your PATH, or set the VCPKG_ROOT environment variable to your vcpkg install location
     goto :usage
 )
 
@@ -51,15 +55,16 @@ call :realpath !-I!
 set INSTALL_DIR=%RETVAL%
 
 :: Ask for confirmation:
-echo Source location = %SOURCE_DIR%
-echo Build location = %BUILD_DIR%
+echo VCPKG_ROOT       = %VCPKG_ROOT%
+echo Source location  = %SOURCE_DIR%
+echo Build location   = %BUILD_DIR%
 echo Install location = %INSTALL_DIR%
-echo Compiler = %COMPILER%
-echo Architecture = %ARCHITECTURE%
+echo Compiler         = %COMPILER%
+echo Architecture     = %ARCHITECTURE%
 choice /C:YN /M Continue?
 if ERRORLEVEL == 2 goto :usage
 
-set MANIFEST_DIR="%SOURCE_DIR%\vcpkg"
+set MANIFEST_DIR="%SOURCE_DIR%"
 
 if not exist "%MANIFEST_DIR%\vcpkg.json" (
     set ERROR_MSG=No vcpkg.json manifest found. Run this script from the root folder of the git repository

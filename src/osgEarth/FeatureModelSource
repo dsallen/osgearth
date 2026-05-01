@@ -85,6 +85,9 @@ namespace osgEarth
         optional<bool>& sessionWideResourceCache() { return _sessionWideResourceCache; }
         const optional<bool>& sessionWideResourceCache() const { return _sessionWideResourceCache; }
 
+        //! Whether to automatically crop features to the working extent
+        OE_OPTION(bool, autoCropFeatures, true);
+
         /** Options feature filters */
         OE_OPTION_VECTOR(ConfigOptions, filters);
 
@@ -107,41 +110,6 @@ namespace osgEarth
         optional<bool>                      _sessionWideResourceCache;
         optional<bool>                      _nodeCaching;
     };
-
-
-#if 0
-    class OSGEARTH_EXPORT FeatureModelSourceOptions : public ModelSourceOptions,
-                                                      public FeatureModelOptions
-    {
-    public: //properties
-
-        optional<FeatureSource::Options>& featureOptions() { return _featureOptions; }
-        const optional<FeatureSource::Options>& featureOptions() const { return _featureOptions; }
-
-    //public:
-    //    /** A live feature source instance to use. Note, this does not serialize. */
-    //    osg::ref_ptr<FeatureSource>& featureSource() { return _featureSource; }
-    //    const osg::ref_ptr<FeatureSource>& featureSource() const { return _featureSource; }
-
-    public:
-        FeatureModelSourceOptions( const ConfigOptions& rhs =ConfigOptions() );
-
-        virtual ~FeatureModelSourceOptions() { }
-
-        virtual Config getConfig() const;
-
-    protected:
-        virtual void mergeConfig( const Config& conf ) {
-            ModelSourceOptions::mergeConfig( conf );
-            fromConfig( conf );
-        }
-
-    private:
-        void fromConfig( const Config& conf );
-
-        optional<FeatureSource::Options> _featureOptions;
-    };
-#endif
 
     /**
      * Interface for a class that can create a Node from a set of features and

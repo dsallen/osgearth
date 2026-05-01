@@ -19,12 +19,12 @@ project(
 
 # SDK version number
 set(OSGEARTH_MAJOR_VERSION 3)
-set(OSGEARTH_MINOR_VERSION 6)
-set(OSGEARTH_PATCH_VERSION 0)
+set(OSGEARTH_MINOR_VERSION 7)
+set(OSGEARTH_PATCH_VERSION 2)
 set(OSGEARTH_VERSION ${OSGEARTH_MAJOR_VERSION}.${OSGEARTH_MINOR_VERSION}.${OSGEARTH_PATCH_VERSION})
 
 # Increment this each time the ABI changes
-set(OSGEARTH_SOVERSION 158)
+set(OSGEARTH_SOVERSION 170)
 
 # Require C++14
 set(CMAKE_CXX_STANDARD 14)
@@ -47,15 +47,17 @@ include_directories(${OSGEARTH_BUILDTIME_INCLUDE_DIR})
 
 # Third-party sources included in the reposotory
 set(OSGEARTH_EMBEDDED_THIRD_PARTY_DIR ${PROJECT_SOURCE_DIR}/src/third_party)
-    
-# Platform-specific settings ............................................
 
-# Default installation folders. The platform-specific includes will
-# override these values as necessary.
-set(INSTALL_RUNTIME_FOLDER "bin${OSGEARTH_INSTALL_FOLDER_SUFFIX}")  # executables
-set(INSTALL_LIBRARY_FOLDER "bin${OSGEARTH_INSTALL_FOLDER_SUFFIX}")  # .dll/.so
-set(INSTALL_ARCHIVE_FOLDER "lib${OSGEARTH_INSTALL_FOLDER_SUFFIX}")  # .lib/.a
-set(INSTALL_PLUGINS_FOLDER "bin${OSGEARTH_INSTALL_FOLDER_SUFFIX}")  # parent folder of OSG plugins folder
+include(GNUInstallDirs)
+if(WIN32)
+    set(OSGEARTH_INSTALL_PLUGINSDIR "${CMAKE_INSTALL_BINDIR}" CACHE STRING "Parent folder of OSG plugins folder")
+else()
+    set(OSGEARTH_INSTALL_PLUGINSDIR "${CMAKE_INSTALL_LIBDIR}" CACHE STRING "Parent folder of OSG plugins folder")
+endif()
+set(OSGEARTH_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/osgearth" CACHE STRING "osgEarth CMake package install directory")
+set(OSGEARTH_INSTALL_DATADIR "${CMAKE_INSTALL_DATADIR}/osgearth" CACHE STRING "osgEarth data directory")
+
+# Platform-specific settings ............................................
 
 include(oe_ios)
 include(oe_osx)
@@ -66,6 +68,7 @@ include(oe_win32)
 
 option(OSGEARTH_BUILD_TOOLS "Build the osgEarth command-line tools" ON)
 option(OSGEARTH_BUILD_EXAMPLES "Build the osgEarth example applications" ON)
+option(OSGEARTH_BUILD_IMGUI_NODEKIT "Build the osgEarth ImGui nodekit and ImGui-based apps" ON)
 option(OSGEARTH_BUILD_CESIUM_NODEKIT "Build the Cesium nodekit (osgEarthCesium)" OFF)
 option(OSGEARTH_BUILD_TRITON_NODEKIT "Build support for SunDog Triton SDK" OFF)
 option(OSGEARTH_BUILD_SILVERLINING_NODEKIT "Build support for SunDog SilverLining SDK" OFF)
@@ -105,6 +108,22 @@ if(WIN32)
     option(OSGEARTH_INSTALL_PDBS "Whether to deploy Windows .pdb files" OFF)
 endif()
 
+
+# Shared v. static build .................................................
+
+option(OSGEARTH_BUILD_SHARED_LIBS "ON to build shared libraries; OFF to build static libraries." ON)
+if(OSGEARTH_BUILD_SHARED_LIBS)
+    set(OSGEARTH_DYNAMIC_OR_STATIC "SHARED")
+else()
+    set(OSGEARTH_DYNAMIC_OR_STATIC "STATIC")
+endif()
+message(STATUS "Building ${OSGEARTH_DYNAMIC_OR_STATIC} libraries")
+
+
+# Whether to append SOVERSIONs to libraries (unix)
+option(OSGEARTH_SONAMES "ON to append so-version numbers to libraries" ON)
+
+
 # Dependencies ...........................................................
 
 # Update git submodules
@@ -122,15 +141,16 @@ endif()
 
 # required - globally used
 find_package(OpenGL REQUIRED)
-find_package(OpenSceneGraph REQUIRED COMPONENTS osg osgDB osgGA osgManipulator osgShadow osgSim osgText osgUtil osgViewer OpenThreads)
+find_package(OpenSceneGraph REQUIRED COMPONENTS osgManipulator osgShadow osgSim osgViewer osgGA osgUtil osgText osgDB osg OpenThreads)
 
-# optional - GLEW supports ImGui
-find_package(GLEW)
-
-if(GLEW_FOUND AND EXISTS "${OSGEARTH_EMBEDDED_THIRD_PARTY_DIR}/imgui/imgui.cpp")
-    set(OSGEARTH_HAVE_IMGUI 1)
+# For static builds we need to link with Fontconfig directly.
+# There is an unknown issue where the Fc symbols are not found when linking executables statically.
+if(NOT OSGEARTH_BUILD_SHARED_LIBS)
+    find_package(Fontconfig QUIET)
+    if (Fontconfig_FOUND)
+        list(APPEND OPENSCENEGRAPH_LIBRARIES Fontconfig::Fontconfig)
+    endif()
 endif()
-
 
 # integrated profiling with tracy?
 if(OSGEARTH_ENABLE_PROFILING)
@@ -150,10 +170,9 @@ if(OSGEARTH_ASSUME_SINGLE_THREADED_OSG)
     add_definitions(-DOSGEARTH_SINGLE_THREADED_OSG)
 endif()
 
-
-
 # Bring in our utility macros that sub-projects will use to configure themselves.
 include(cmake/osgearth-macros.cmake)
+include(cmake/install-package-config-files.cmake)
 
 # Detect the OSG version so we can append it to plugin DLLs just like OSG does.
 detect_osg_version()
@@ -167,20 +186,14 @@ message(STATUS "Found OSG version ${OPENSCENEGRAPH_VERSION}")
 include_directories(
     ${OSGEARTH_SOURCE_DIR}/src
     ${OPENSCENEGRAPH_INCLUDE_DIR})
-
-
-# Shared v. static build .................................................
-
-option(OSGEARTH_BUILD_SHARED_LIBS "ON to build shared libraries; OFF to build static libraries." ON)
-if(OSGEARTH_BUILD_SHARED_LIBS)
-    set(OSGEARTH_DYNAMIC_OR_STATIC "SHARED")
-else()
-    set(OSGEARTH_DYNAMIC_OR_STATIC "STATIC")
+    
+# If OSG is built with OPENGL_PROFILE=GLCORE, <osg/GL> will try to include the GLCORE ARB headers.
+# Set this variable to make those headers available when building osgEarth.
+set(OSGEARTH_GLCORE_INCLUDE_DIR "" CACHE PATH "Location of OpenGL CORE profile header parent folder")
+mark_as_advanced(OSGEARTH_GLCORE_INCLUDE_DIR)
+if(OSGEARTH_GLCORE_INCLUDE_DIR)
+    include_directories(${OSGEARTH_GLCORE_INCLUDE_DIR})
 endif()
-message(STATUS "Building ${OSGEARTH_DYNAMIC_OR_STATIC} libraries")
-
-# Whether to append SOVERSIONs to libraries (unix)
-option(OSGEARTH_SONAMES "ON to append so-version numbers to libraries" ON)
 
 
 # Source code ............................................................
@@ -190,18 +203,6 @@ add_subdirectory(src)
 if(OSGEARTH_BUILD_DOCS)
     add_subdirectory(docs)
 endif()
-
-
-# CMake Config File Creation .............................................
-
-include(cmake/install-package-config-files.cmake)
-
-osgearth_install_package_config_files(
-    osgEarth
-    ${OSGEARTH_VERSION}
-    ${CMAKE_INSTALL_PREFIX}/include
-    ${CMAKE_INSTALL_PREFIX}/${INSTALL_LIBRARY_FOLDER})
-    
     
     
 # IDE configuration ......................................................

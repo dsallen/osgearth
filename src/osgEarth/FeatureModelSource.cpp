@@ -72,6 +72,8 @@ FeatureModelOptions::fromConfig(const Config& conf)
     
     conf.get( "session_wide_resource_cache", _sessionWideResourceCache );
 
+    conf.get("auto_crop_features", _autoCropFeatures);
+
     const Config& filtersConf = conf.child("filters");
     for(ConfigSet::const_iterator i = filtersConf.children().begin(); i != filtersConf.children().end(); ++i)
         filters().push_back( ConfigOptions(*i) );
@@ -103,6 +105,8 @@ FeatureModelOptions::getConfig() const
     conf.set( "node_caching",     _nodeCaching );
     
     conf.set( "session_wide_resource_cache", _sessionWideResourceCache );
+
+    conf.set("auto_crop_features", _autoCropFeatures);
 
     if (filters().empty() == false)
     {
@@ -142,7 +146,9 @@ FeatureNodeFactory::getOrCreateStyleGroup(const Style& style,
     // Otherwise, a normal group.
     if ( !group )
     {
-        group = new osg::Group();
+        auto styleGroup = new StyleGroup(style);
+        group = styleGroup;
+        //group = new osg::Group();
     }
 
     // apply necessary render styles.

@@ -219,26 +219,6 @@ namespace osgEarth
         };
 
 
-
-        /**
-         * Cull callback that sets a clip plane at the visible horizon
-         * of the Ellipsoid.
-         */
-        class OSGEARTH_EXPORT ClipToGeocentricHorizon : public osg::NodeCallback
-        {
-        public:
-            ClipToGeocentricHorizon(
-                const osgEarth::SpatialReference* srs,
-                osg::ClipPlane* clipPlane);
-
-            void operator()(osg::Node* node, osg::NodeVisitor* nv);
-
-        protected:
-            osg::ref_ptr<Horizon>             _horizon;
-            osg::observer_ptr<osg::ClipPlane> _clipPlane;
-        };
-
-
         struct OSGEARTH_EXPORT CullDebugger
         {
             Config dumpRenderBin(osgUtil::RenderBin* bin) const;
@@ -326,15 +306,31 @@ namespace osgEarth
                         savedBin = cv->getCurrentRenderBin();
                         emptyStage = new EmptyRenderBin(savedBin->getStage());
                         cv->setCurrentRenderBin(emptyStage.get());
+                        cv->setUserValue("oe_visible", false);
                     }
 
                     traverse(node, nv);
 
                     if (cv)
                     {
+                        cv->setUserValue("oe_visible", true);
                         cv->setCurrentRenderBin(savedBin.get());
                     }
                 }
+            }
+        };
+
+        class OSGEARTH_EXPORT CheckVisibilityCallback : public osg::NodeCallback
+        {
+        public:
+            void operator()(osg::Node* node, osg::NodeVisitor* nv) override
+            {
+                osgUtil::CullVisitor* cv = dynamic_cast<osgUtil::CullVisitor*>(nv);
+                bool visible = true;
+                if (cv && cv->getUserValue("oe_visible", visible) && !visible)
+                    return;
+
+                traverse(node, nv);
             }
         };
     }

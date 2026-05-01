@@ -233,7 +233,7 @@ namespace
             }
             else
             {
-                OE_DEBUG << LC << "Empty SQID geom at " << gzd << " " << sqid << std::endl;
+                //OE_DEBUG << LC << "Empty SQID geom at " << gzd << " " << sqid << std::endl;
             }
         }
         return true;
@@ -454,15 +454,14 @@ namespace
                     osg::ref_ptr<Feature> f = new Feature(polygon.get(), _utm.get());
                     f->transform(_feature->getSRS());
 
-                    osg::ref_ptr<Geometry> croppedGeom;
-                    if (f->getGeometry()->crop(_extent.bounds(), croppedGeom))
+                    osg::ref_ptr<Geometry> cropped = f->getGeometry()->crop(_extent.bounds());
+                    if (cropped.valid())
                     {
-                        f->setGeometry(croppedGeom.get());
+                        f->setGeometry(cropped.get());
                         f->set("easting", x);
                         f->set("northing", y);
                         GeomCell* child = new GeomCell(interval);
                         child->setupData(f.get(), _parent);
-                        //child->setupPaging();
                         group->addChild(child);
                     }                 
                 }
@@ -518,10 +517,9 @@ namespace
             osg::ref_ptr<Feature> f = new Feature(grid.get(), _utm.get());
             f->transform(_feature->getSRS());
 
-            osg::ref_ptr<Geometry> croppedGeom;
-            if (f->getGeometry()->crop(_extent.bounds(), croppedGeom))
+            if (auto cropped = f->getGeometry()->crop(_extent.bounds()))
             {
-                f->setGeometry(croppedGeom.get());
+                f->setGeometry(cropped);
             }
 
             GeometryCompilerOptions gco;
@@ -912,10 +910,6 @@ namespace
 
                 fullExtent.expandToInclude(extent);
             }
-
-            OE_DEBUG << LC << "Created " << features.size() << " text elements for " << getName() << std::endl;
-            
-            //Registry::shaderGenerator().run(this, Registry::stateSetCache());
         }
         
 #ifdef DEBUG_MODE
@@ -1300,7 +1294,7 @@ MGRSGraticule::setUpDefaultStyles()
             Style style("gzd");
             LineSymbol* line = style.getOrCreate<LineSymbol>();
             line->stroke().mutable_value().color().set(1, 0, 0, 0.25);
-            line->stroke().mutable_value().width() = 4.0;
+            line->stroke().mutable_value().width() = Distance(4.0, Units::PIXELS);
             line->tessellation() = 20;
             TextSymbol* text = style.getOrCreate<TextSymbol>();
             text->fill().mutable_value().color() = Color::White;
@@ -1323,7 +1317,7 @@ MGRSGraticule::setUpDefaultStyles()
             Style style("100000");
             LineSymbol* line = style.getOrCreate<LineSymbol>();
             line->stroke().mutable_value().color().set(1,1,0,alpha);
-            line->stroke().mutable_value().width() = 3;
+            line->stroke().mutable_value().width() = Distance(3, Units::PIXELS);
             TextSymbol* text = style.getOrCreate<TextSymbol>();
             text->fill().mutable_value().color() = Color::White;
             text->halo().mutable_value().color() = Color::Black;
@@ -1337,7 +1331,7 @@ MGRSGraticule::setUpDefaultStyles()
             Style style("10000");
             LineSymbol* line = style.getOrCreate<LineSymbol>();
             line->stroke().mutable_value().color().set(0,1,0,alpha);
-            line->stroke().mutable_value().width() = 2;
+            line->stroke().mutable_value().width() = Distance(2, Units::PIXELS);
             styles->addStyle(style);
         }
 
@@ -1347,7 +1341,7 @@ MGRSGraticule::setUpDefaultStyles()
             Style style("1000");
             LineSymbol* line = style.getOrCreate<LineSymbol>();
             line->stroke().mutable_value().color().set(.5,.5,1,alpha);
-            line->stroke().mutable_value().width() = 2;
+            line->stroke().mutable_value().width() = Distance(2, Units::PIXELS);
             styles->addStyle(style);
         }
 
@@ -1357,7 +1351,7 @@ MGRSGraticule::setUpDefaultStyles()
             Style style("100");
             LineSymbol* line = style.getOrCreate<LineSymbol>();
             line->stroke().mutable_value().color().set(1,1,1,alpha);
-            line->stroke().mutable_value().width() = 1;
+            line->stroke().mutable_value().width() = Distance(1, Units::PIXELS);
             styles->addStyle(style);
         }
 
@@ -1367,7 +1361,7 @@ MGRSGraticule::setUpDefaultStyles()
             Style style("10");
             LineSymbol* line = style.getOrCreate<LineSymbol>();
             line->stroke().mutable_value().color().set(1,1,1,alpha);
-            line->stroke().mutable_value().width() = 1;
+            line->stroke().mutable_value().width() = Distance(1, Units::PIXELS);
             styles->addStyle(style);
         }
 
@@ -1377,7 +1371,7 @@ MGRSGraticule::setUpDefaultStyles()
             Style style("1");
             LineSymbol* line = style.getOrCreate<LineSymbol>();
             line->stroke().mutable_value().color().set(1,1,1,alpha);
-            line->stroke().mutable_value().width() = 0.5;
+            line->stroke().mutable_value().width() = Distance(0.5, Units::PIXELS);
             styles->addStyle(style);
         }
     }

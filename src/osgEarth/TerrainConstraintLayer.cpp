@@ -17,11 +17,11 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
 
-#include <osgEarth/TerrainConstraintLayer>
-#include <osgEarth/Map>
-#include <osgEarth/Progress>
-#include <osgEarth/Utils>
-#include <osgEarth/SimplePager>
+#include "TerrainConstraintLayer"
+#include "Map"
+#include "Progress"
+#include "Utils"
+#include "NetworkMonitor"
 
 using namespace osgEarth;
 
@@ -198,9 +198,9 @@ TerrainConstraintLayer::openImplementation()
     if (parent.isError())
         return parent;
 
-    if (!options().featureSource().isSet() && !options().model().isSet())
+    if (!options().featureSource().isSet() && !options().model().isSet() && !constraintCallback)
     {
-        return Status(Status::ConfigurationError, "Missing either features or model constraint source");
+        return Status(Status::ConfigurationError, "Missing either features, model, or callback constraint source");
     }
 
     if (options().featureSource().isSet())
@@ -236,7 +236,6 @@ TerrainConstraintLayer::getExtent() const
 void
 TerrainConstraintLayer::addedToMap(const Map* map)
 {
-    OE_DEBUG << LC << "addedToMap\n";
     VisibleLayer::addedToMap(map);
     options().featureSource().addedToMap(map);
     options().model().addedToMap(map);
@@ -269,6 +268,12 @@ TerrainConstraintLayer::create()
     auto* model = options().model().getLayer();
     if (model)
     {
+        return;
+    }
+
+    if (constraintCallback)
+    {
+        // fine
         return;
     }
 
@@ -320,7 +325,7 @@ TerrainConstraintLayer::getFeatureConstraint(const TileKey& key, FilterContext* 
                 f->transform(keyExtent.getSRS());
                 constraint.features.emplace_back(f);
             }
-        }
+        }            
     }
 }
 
@@ -361,13 +366,14 @@ TerrainConstraintLayer::getModelConstraint(const TileKey& key, MeshConstraint& c
 MeshConstraint
 TerrainConstraintLayer::getConstraint(const TileKey& key, FilterContext* context, ProgressCallback* progress) const
 {
-
     if (!isOpen() || !getVisible() || getMinLevel() > key.getLOD())
         return {};
 
     const GeoExtent& keyExtent = key.getExtent();
     if (getExtent().isValid() && !getExtent().intersects(keyExtent))
         return {};
+
+    NetworkMonitor::ScopedRequestLayer layerRequest(getName());
 
     MeshConstraint result;
     result.hasElevation = getHasElevation();
@@ -393,7 +399,12 @@ TerrainConstraintLayer::getConstraint(const TileKey& key, FilterContext* context
         getFeatureConstraint(key, context, result, progress);
     }
 
-    return result;
+    if (constraintCallback)
+    {
+        constraintCallback.fire(key, result, context, progress);
+    }
+
+    return result.features.empty() ? MeshConstraint() : result;
 }
 
 
@@ -419,6 +430,7 @@ TerrainConstraintQuery::getConstraints(const TileKey& key, MeshConstraints& outp
         const GeoExtent& keyExtent = key.getExtent();
 
         FilterContext context(session.get());
+        context.extent() = keyExtent;
 
         for (auto& layer : layers)
         {

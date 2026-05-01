@@ -1,33 +1,45 @@
-function(osgearth_install_package_config_files TARGET TARGET_VERSION INCLUDE_INSTALL_DIR LIBRARY_INSTALL_DIR)
-
+# osgearth_package_install_config_file
+#
+# Creates and installs the top-level LIBNAME-config.cmake file for a library
+#
+function(osgearth_package_install_config_files)
     include(CMakePackageConfigHelpers)
 
-    set(PACKAGE_INSTALL_DIR share)
-    #set(INCLUDE_INSTALL_DIR ${CMAKE_INSTALL_INCLUDEDIR})
-    #set(LIBRARY_INSTALL_DIR ${CMAKE_INSTALL_LIBDIR})
+    # main target include dir
+    set(INCLUDE_INSTALL_DIR "${CMAKE_INSTALL_INCLUDEDIR}")
 
     configure_package_config_file(
-        "${TARGET}Config.cmake.in"
-        "${TARGET}Config.cmake"
-        INSTALL_DESTINATION ${PACKAGE_INSTALL_DIR}
-        PATH_VARS INCLUDE_INSTALL_DIR LIBRARY_INSTALL_DIR) 
+        "${PROJECT_SOURCE_DIR}/cmake/osgearth-config.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/osgearth-config.cmake"
+        INSTALL_DESTINATION ${OSGEARTH_INSTALL_CMAKEDIR}
+        PATH_VARS INCLUDE_INSTALL_DIR OSGEARTH_INSTALL_DATADIR) 
 
     write_basic_package_version_file(
-        "${TARGET}ConfigVersion.cmake"
-        VERSION ${TARGET_VERSION}
+        "${CMAKE_CURRENT_BINARY_DIR}/osgearth-config-version.cmake"
+        VERSION ${OSGEARTH_VERSION}
         COMPATIBILITY AnyNewerVersion)
-
-    install(
-        EXPORT ${TARGET}Targets
-        FILE ${TARGET}Targets.cmake
-        NAMESPACE ${TARGET}::
-        DESTINATION ${PACKAGE_INSTALL_DIR} )
         
     install(
         FILES
-            "${CMAKE_CURRENT_BINARY_DIR}/${TARGET}Config.cmake"
-            "${CMAKE_CURRENT_BINARY_DIR}/${TARGET}ConfigVersion.cmake"
+            "${CMAKE_CURRENT_BINARY_DIR}/osgearth-config.cmake"
+            "${CMAKE_CURRENT_BINARY_DIR}/osgearth-config-version.cmake"
         DESTINATION
-             ${PACKAGE_INSTALL_DIR} )
+             ${OSGEARTH_INSTALL_CMAKEDIR} )
+    
+endfunction()
+
+
+# osgearth_package_install_library_target
+#
+# Installs the -targets.cmake file for the library "MY_TARGET".
+# Each -targets.cmaks file corresond to one "component" or "nodekit" library,
+# and is included from the top-level osgEarth-config.cmake file.
+#
+function(osgearth_package_install_library_target MY_TARGET)
+    install(
+        EXPORT ${MY_TARGET}Targets
+        FILE ${MY_TARGET}-targets.cmake
+        NAMESPACE osgEarth::
+        DESTINATION ${OSGEARTH_INSTALL_CMAKEDIR} )
     
 endfunction()

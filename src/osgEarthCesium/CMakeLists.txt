@@ -1,4 +1,4 @@
-find_package(CesiumNative)
+find_package(CesiumNative REQUIRED)
 
 if (CESIUM_NATIVE_FOUND)
 
@@ -40,25 +40,22 @@ if (CESIUM_NATIVE_FOUND)
         PrepareRenderResources
         TaskProcessor)
 
-    # ImGui headers:
-    if(OSGEARTH_HAVE_IMGUI)
-        set(TARGET_H_IMGUI ImGui/CesiumIonGUI)    
-    endif()
-
     set(CMAKE_CXX_STANDARD 17)
 
     add_osgearth_library(
         TARGET ${LIB_NAME}
         PUBLIC_HEADERS ${TARGET_H}
-        IMGUI_HEADERS ${TARGET_H_IMGUI}
         SOURCES ${TARGET_SRC}
         SHADERS ${TARGET_GLSL}
         TEMPLATES ${TARGET_IN}
         FOLDER "NodeKits")
 
-    # Include the Cesium Native headers BEFORE anything else to ensure that dependencies that might be duplicated like spdlog are included from the Cesium Native headers.
-    include_directories(BEFORE ${CESIUM_NATIVE_INCLUDE_DIR})
-
     target_link_libraries(${LIB_NAME} PRIVATE OE::CESIUM_NATIVE)
+
+    # Include the Cesium Native headers BEFORE anything else to ensure that dependencies
+    # that might be duplicated like spdlog are included from the Cesium Native headers.
+    # Note: we had to comment out the INTERFACE_INCLUDE_DIRECTORIES from the OE::CESIUM_NATIVE import
+    # library to make this work!
+    include_directories(BEFORE ${CESIUM_NATIVE_INCLUDE_DIR})
 
 endif()

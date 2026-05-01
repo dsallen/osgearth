@@ -22,6 +22,7 @@
 #include <osgEarth/MemCache>
 #include <osgEarth/Metrics>
 #include <osgEarth/NetworkMonitor>
+#include <osgEarth/Math>
 #include <cinttypes>
 
 using namespace osgEarth;
@@ -187,7 +188,6 @@ ElevationLayer::normalizeNoDataValues(osg::HeightField* hf) const
             float& value = *i;
             if ( osg::isNaN(value) || osg::equivalent(value, getNoDataValue()) || value < getMinValidValue() || value > getMaxValidValue() )
             {
-                OE_DEBUG << "Replaced " << value << " with NO_DATA_VALUE" << std::endl;
                 value = NO_DATA_VALUE;
             }
         }
@@ -217,6 +217,153 @@ ElevationLayer::applyProfileOverrides(osg::ref_ptr<const Profile>& inOutProfile)
     }
 }
 
+GeoHeightField
+ElevationLayer::assembleHeightField(const TileKey& key, ProgressCallback* progress)
+{
+    // If we got here, assert that there's a non-null layer profile.
+    if (!getProfile())
+    {
+        setStatus(Status::Error(Status::AssertionFailure, "assembleHeightField with undefined profile"));
+        return { };
+    }
+
+    GeoHeightField output;
+    unsigned targetLOD = getProfile()->getEquivalentLOD(key.getProfile(), key.getLOD());
+
+    std::vector<TileKey> intersectingKeys;
+    getProfile()->getIntersectingTiles(key, intersectingKeys);
+
+    using KeyedSource = std::pair<TileKey, GeoHeightField>;
+    std::vector<KeyedSource> sources;
+
+    if (intersectingKeys.size() > 0)
+    {
+        bool hasAtLeastOneSourceAtTargetLOD = false;
+
+        for (auto& intersectingKey : intersectingKeys)
+        {
+            TileKey subKey = intersectingKey;
+            GeoHeightField subTile;
+            while (subKey.valid() && !subTile.valid())
+            {
+                subTile = createHeightFieldInKeyProfile(subKey, progress);
+                if (!subTile.valid())
+                    subKey.makeParent();
+
+                if (progress && progress->isCanceled())
+                    return {};
+            }
+
+            if (subTile.valid())
+            {
+                if (subKey.getLOD() == targetLOD)
+                {
+                    hasAtLeastOneSourceAtTargetLOD = true;
+                }
+
+                // got a valid image, so add it to our sources collection:
+                sources.emplace_back(subKey, subTile);
+            }
+        }
+
+        // If we actually got at least one piece of usable data,
+        // move ahead and build a mosaic of all sources.
+        if (hasAtLeastOneSourceAtTargetLOD)
+        {
+            unsigned cols = getTileSize();
+            unsigned rows = getTileSize();
+
+            // sort the sources by LOD (highest first).
+            std::sort(
+                sources.begin(), sources.end(),
+                [](const auto& lhs, const auto& rhs) {
+                    return lhs.first.getLOD() > rhs.first.getLOD();
+                });
+
+            // assume all tiles to mosaic are in the same SRS.
+            auto* key_srs = key.getExtent().getSRS();
+            auto* source_srs = sources[0].second.getSRS();
+
+            // new output:
+            auto mosaic = new osg::HeightField();
+            mosaic->allocate(cols, rows);
+            auto& heights = mosaic->getHeightList();
+            for(int i=0; i<cols*rows; ++i)
+                heights[i] = NO_DATA_VALUE;
+
+            // Working set of points. it's much faster to xform an entire vector all at once.
+            std::vector<osg::Vec3d> points;
+            points.resize(cols * rows);
+
+            double minx, miny, maxx, maxy;
+            key.getExtent().getBounds(minx, miny, maxx, maxy);
+            double dx = (maxx - minx) / (double)(cols-1);
+            double dy = (maxy - miny) / (double)(rows-1);
+
+            // Source bounds and projection grid. We use cols-1 and rows-1
+            // since we want to sample edge to edge, unlike with imagery
+            Bounds sourceBounds;
+            sources[0].second.getSRS()->getBounds(sourceBounds);
+
+            // build a grid of sample points:
+            for (unsigned t = 0; t < rows; ++t)
+            {
+                double y = miny + (dy * (double)t);
+                for (unsigned s = 0; s < cols; ++s)
+                {
+                    double x = minx + (dx * (double)s);
+                    points[t * cols + s] = { x, y, 0.0 };
+                }
+            }
+
+            // transform the sample points to the SRS of our source data tiles.
+            // NOTE: point.z() will hold a vertical offset if the layers' vdatums are different;
+            // we will add it back in later.
+            if (source_srs && key_srs)
+            {
+                key_srs->transform(points, source_srs);
+
+                if (sourceBounds.valid())
+                {
+                    for (auto& point : points)
+                    {
+                        point.x() = clamp(point.x(), sourceBounds.xMin(), sourceBounds.xMax());
+                        point.y() = clamp(point.y(), sourceBounds.yMin(), sourceBounds.yMax());
+                    }
+                }
+            }
+
+            // Mosaic our sources into a single output image.
+            for (int row = 0; row < rows; ++row)
+            {
+                for (int col = 0; col < cols; ++col)
+                {
+                    int i = row * cols + col;
+                    auto& h = mosaic->getHeight(col, row);
+                    for (unsigned k = 0; k < sources.size() && h == NO_DATA_VALUE; ++k)
+                    {
+                        auto& source = sources[k].second;
+                        if (source.getExtent().contains(points[i].x(), points[i].y())) // prevents clamping of out-of-bounds points
+                        {
+                            h = sources[k].second.getElevation(points[i].x(), points[i].y(), INTERP_BILINEAR);
+                        }
+                    }
+                    if (h != NO_DATA_VALUE)
+                    {
+                        // apply reverse vdatum offset if necessary
+                        h -= points[i].z();
+                    }
+                }
+            }
+
+            output = GeoHeightField(mosaic, key.getExtent());
+        }
+    }
+
+    return output;
+}
+
+#if 0
 void
 ElevationLayer::assembleHeightField(const TileKey& key,
                                     osg::ref_ptr<osg::HeightField>& out_hf,
@@ -355,6 +502,7 @@ ElevationLayer::assembleHeightField(const TileKey& key,
         out_hf = 0;
     }
 }
+#endif
 
 GeoHeightField
 ElevationLayer::createHeightField(const TileKey& key)
@@ -487,6 +635,8 @@ ElevationLayer::createHeightFieldInKeyProfile(const TileKey& key, ProgressCallba
                 return GeoHeightField::INVALID;
             }
 
+            bool applyVerticalDatumTransformation = !key.getExtent().getSRS()->isVertEquivalentTo(profile->getSRS());
+
             if (key.getProfile()->isHorizEquivalentTo(profile.get()))
             {
                 Threading::ScopedReadLock lock(inUseMutex());
@@ -495,9 +645,10 @@ ElevationLayer::createHeightFieldInKeyProfile(const TileKey& key, ProgressCallba
             else
             {
                 // If the profiles are different, use a compositing method to assemble the tile.
-                osg::ref_ptr<osg::HeightField> hf;
-                assembleHeightField(key, hf, progress);
-                result = GeoHeightField(hf.get(), key.getExtent());
+                result = assembleHeightField(key, progress);
+                
+                // assembleHeightField already does this, and more efficiently:
+                applyVerticalDatumTransformation = false;
             }
 
             // Check for cancelation before writing to a cache
@@ -525,10 +676,8 @@ ElevationLayer::createHeightFieldInKeyProfile(const TileKey& key, ProgressCallba
 
             // If the result is good, we now have a heightfield but its vertical values
             // are still relative to the source's vertical datum. Convert them.
-            if (hf.valid() && !key.getExtent().getSRS()->isVertEquivalentTo(profile->getSRS()))
+            if (applyVerticalDatumTransformation && hf.valid())
             {
-                OE_PROFILING_ZONE_NAMED("vdatum xform");
-
                 VerticalDatum::transform(
                     profile->getSRS()->getVerticalDatum(),    // from
                     key.getExtent().getSRS()->getVerticalDatum(),  // to
@@ -556,7 +705,6 @@ ElevationLayer::createHeightFieldInKeyProfile(const TileKey& key, ProgressCallba
             // any new data, just return the cached data.
             if (!hf.valid() && cachedHF.valid())
             {
-                OE_DEBUG << LC << "Using cached but expired heightfield for " << key.str() << std::endl;
                 hf = cachedHF;
             }
 
@@ -1096,9 +1244,6 @@ ElevationLayerVector::populateHeightField(
         std::cout << std::endl;
     }
 #endif
-
-    // Resolve any invalid heights in the output heightfield.
-    HeightFieldUtils::resolveInvalidHeights(hf, key.getExtent(), NO_DATA_VALUE, 0L);
 
     if (progress && progress->isCanceled())
     {

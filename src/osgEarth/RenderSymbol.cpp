@@ -110,14 +110,26 @@ RenderSymbol::parseSLD(const Config& c, Style& style)
 {
     RenderSymbol defaults;
 
+    if (match(c.key(), "library")) {
+        if (!c.value().empty())
+            style.getOrCreate<SkinSymbol>()->library() = Strings::unquote(c.value());
+    }
+    else
     if ( match(c.key(), "render-depth-test") ) {
         style.getOrCreate<RenderSymbol>()->depthTest() = as<bool>(c.value(), *defaults.depthTest());
     }
     else if ( match(c.key(), "render-lighting") ) {
         style.getOrCreate<RenderSymbol>()->lighting() = as<bool>(c.value(), *defaults.lighting());
     }
-    else if ( match(c.key(), "render-depth-offset") ) {
-        style.getOrCreate<RenderSymbol>()->depthOffset().mutable_value().enabled() = as<bool>(c.value(), *defaults.depthOffset()->enabled() );
+    else if (match(c.key(), "render-depth-offset")) {
+        if (c.value() == "true") {
+            style.getOrCreate<RenderSymbol>()->depthOffset().mutable_value().range() = Distance(0.1, Units::METERS);
+        }
+        else if (c.value() != "false") {
+            float value; UnitsType units;
+            if (Units::parse(c.value(), value, units, Units::METERS))
+                style.getOrCreate<RenderSymbol>()->depthOffset().mutable_value().range() = Distance(value, units);
+        }
     }
     else if ( match(c.key(), "render-depth-offset-min-bias") ) {
         float value; UnitsType units;

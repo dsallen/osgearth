@@ -68,6 +68,15 @@ ElevationPool::ElevationPool() :
 {
 }
 
+const SpatialReference*
+ElevationPool::getMapSRS() const
+{
+    osg::ref_ptr<const Map> map;
+    if (_map.lock(map))
+        return map->getSRS();
+    else
+        return nullptr;
+}
 
 namespace
 {
@@ -162,8 +171,6 @@ ElevationPool::refresh(const Map* map)
     ScopedWriteLock lk(_mutex);
 
     _elevationLayers.clear();
-
-    OE_DEBUG << LC << "Refreshing EP index" << std::endl;
 
     if (_index)
         delete static_cast<MaxLevelIndex*>(_index);
@@ -309,7 +316,7 @@ ElevationPool::findExistingRaster(
     // found it, so stick it in the L2 cache
     if (output.valid())
     {
-        OE_DEBUG << LC << key._tilekey.str() << " - Cache hit (global LUT)" << std::endl;
+        //OE_DEBUG << LC << key._tilekey.str() << " - Cache hit (global LUT)" << std::endl;
     }
 
     return output.valid();
@@ -361,6 +368,9 @@ ElevationPool::getOrCreateRaster(
                 map->getProfileNoVDatum(),
                 map->getElevationInterpolation(),
                 progress);
+
+            // Resolve any invalid heights in the output heightfield.
+            HeightFieldUtils::resolveInvalidHeights(hf.get(), keyToUse.getExtent(), NO_DATA_VALUE, 0L);
 
             if ((populated == true) ||
                 (acceptLowerRes == false) ||
@@ -503,17 +513,20 @@ ElevationPool::prepareEnvelope(
 
     GeoPoint refPointMap = refPoint.transform(env._map->getSRS());
 
-    double resolutionInMapUnits = resolution.asDistance(units, refPointMap.y());
+    double resolutionInMapUnits = env._map->getSRS()->transformDistance(resolution, units, refPointMap.y());
+    //double resolutionInMapUnits = resolution.asDistance(units, refPointMap.y());
 
     int maxLOD = env._profile->getLevelOfDetailForHorizResolution(
         resolutionInMapUnits,
         ELEVATION_TILE_SIZE);
 
-    env._lod = osg::minimum(getLOD(refPointMap.x(), refPointMap.y()), (int)maxLOD);
+    env._lod = std::min(getLOD(refPointMap.x(), refPointMap.y()), (int)maxLOD);
 
     // This can happen if the elevation data publishes no data extents
-    if (env._lod < 0)
+    if (env._lod < 0 && !_elevationLayers.empty())
+    {
         env._lod = maxLOD;
+    }
 
     env._profile->getNumTiles(env._lod, env._tw, env._th);
 
@@ -536,6 +549,13 @@ ElevationPool::Envelope::sampleMapCoords(
 
     if (begin == end)
         return -1;
+
+    if (_lod < 0)
+    {
+        for(auto i = begin; i != end; ++i)
+            i->z() = failValue;
+        return 0;
+    }
 
     ScopedReadLock lk(_pool->_mutex);
 
@@ -647,6 +667,13 @@ ElevationPool::sampleMapCoords(
 
     sync(map.get(), ws);
 
+    if (_elevationLayers.empty())
+    {
+        for (auto i = begin; i != end; ++i)
+            i->z() = failValue;
+        return 0;
+    }
+
     ScopedReadLock lk(_mutex);
 
     Internal::RevElevationKey key;
@@ -674,7 +701,8 @@ ElevationPool::sampleMapCoords(
 
     int lod;
     int lod_prev = INT_MAX;
-    auto& units = map->getSRS()->getUnits();
+    auto* srs = map->getSRS();
+    auto& units = srs->getUnits();
     Distance pointRes(0.0, units);
 
     for (auto iter = begin; iter != end; ++iter)
@@ -689,7 +717,8 @@ ElevationPool::sampleMapCoords(
 
             pointRes.set(p.w(), units);
 
-            double resolutionInMapUnits = pointRes.asDistance(units, p.y());
+            double resolutionInMapUnits = srs->transformDistance(pointRes, units, p.y());
+            //double resolutionInMapUnits = pointRes.asDistance(units, p.y());
 
             lod = profile->getLevelOfDetailForHorizResolution(
                 resolutionInMapUnits,
@@ -788,6 +817,14 @@ ElevationPool::sampleMapCoords(
         return -1;
 
     sync(map.get(), ws);
+
+    if (_elevationLayers.empty())
+    {
+        for (auto i = begin; i != end; ++i)
+            i->z() = failValue;
+        return 0;
+    }
+
     ScopedReadLock lk(_mutex);
 
     Internal::RevElevationKey key;
@@ -815,14 +852,17 @@ ElevationPool::sampleMapCoords(
 
     int lod;
     int lod_prev = INT_MAX;
-    auto& units = map->getSRS()->getUnits();
+    auto* srs = map->getSRS();
+    auto& units = srs->getUnits();
 
     for (auto iter = begin; iter != end; ++iter)
     {
         auto& p = *iter;
         {
             //OE_PROFILING_ZONE_NAMED("createTileKey");
-            double resolutionInMapUnits = resolution.asDistance(units, p.y());
+            double resolutionInMapUnits = srs->transformDistance(resolution, units, p.y());
+            //double resolutionInMapUnits = resolution.asDistance(units, p.y());
+
             int computedLOD = profile->getLevelOfDetailForHorizResolution(
                 resolutionInMapUnits,
                 ELEVATION_TILE_SIZE);
@@ -920,6 +960,9 @@ ElevationPool::getSample(
     // ensure the Pool is in sync with the map
     sync(map, ws);
 
+    if (_elevationLayers.empty())
+        return {};
+
     ScopedReadLock lk(_mutex);
 
     Internal::RevElevationKey key;
@@ -957,11 +1000,14 @@ ElevationPool::getSample(
     ProgressCallback* progress)
 {
     if (!p.isValid())
-        return ElevationSample();
+        return {};
 
     osg::ref_ptr<const Map> map = _map.get();
     if (!map.valid() || !map->getProfile())
-        return ElevationSample();
+        return {};
+
+    if (_elevationLayers.empty())
+        return {};
 
     if (!p.getSRS()->isHorizEquivalentTo(map->getProfile()->getSRS()))
     {
@@ -983,11 +1029,14 @@ ElevationPool::getSample(
     ProgressCallback* progress)
 {
     if (!p.isValid())
-        return ElevationSample();
+        return {};
+
+    if (_elevationLayers.empty())
+        return {};
 
     osg::ref_ptr<const Map> map;
     if (_map.lock(map) == false || map->getProfile() == NULL)
-        return ElevationSample();
+        return {};
 
     // mostly right. :)
     double resolutionInMapUnits = SpatialReference::transformUnits(

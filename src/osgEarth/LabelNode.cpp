@@ -32,6 +32,7 @@
 #include <osgEarth/ScreenSpaceLayout>
 #include <osgEarth/Lighting>
 #include <osgEarth/Shaders>
+#include <osgEarth/CullingUtils>
 #include <osgText/Text>
 #include <osg/Depth>
 
@@ -119,6 +120,10 @@ LabelNode::construct()
     _geode->setComputeBoundingSphereCallback(new ControlPointCallback());
 
     getPositionAttitudeTransform()->addChild( _geode.get() );
+
+    // supports culling by visibility flag
+    auto cb = new CheckVisibilityCallback();
+    this->addCullCallback(cb);
 }
 
 void
@@ -144,6 +149,7 @@ LabelNode::setText( const std::string& text )
             }
 
             d->setText(text, textEncoding);
+            d->setName(text);
 
             _text = text;
             return;
@@ -290,6 +296,15 @@ LabelNode::updateLayoutData()
             _geoPointProj.toWorld(p1);
             _dataLayout->setAnchorPoint(p0);
             _dataLayout->setProjPoint(p1);
+        }
+        else
+        {
+            _dataLayout->setRotationDegrees(osg::RadiansToDegrees(_labelRotationRad));
+        }
+
+        if (ts->unique() == true)
+        {
+            _dataLayout->_unique = true;        
         }
     }
 }

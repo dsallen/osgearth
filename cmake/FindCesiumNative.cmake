@@ -16,7 +16,7 @@
 #
 set(CESIUM_NATIVE_DIR "" CACHE PATH "Root directory of cesium-native distribution")
 
-set(CESIUM_NATIVE_FOUND FALSE)
+unset(CESIUM_NATIVE_FOUND)
 
 # Location the cesium-native installation:
 find_path(CESIUM_NATIVE_INCLUDE_DIR CesiumUtility/Uri.h
@@ -26,6 +26,8 @@ find_path(CESIUM_NATIVE_INCLUDE_DIR CesiumUtility/Uri.h
     PATH_SUFFIXES
         include )
         
+set(CESIUM_ANY_LIBRARY_MISSING FALSE)
+        
 # Macro to locate each cesium library.
 macro(find_cesium_library MY_LIBRARY_VAR MY_LIBRARY_NAME)
 
@@ -34,7 +36,7 @@ macro(find_cesium_library MY_LIBRARY_VAR MY_LIBRARY_NAME)
     unset(${MY_LIBRARY_VAR}_LIBRARY_DEBUG CACHE)
     unset(${MY_LIBRARY_VAR}_LIBRARY_RELEASE CACHE)
 
-    if (NOT CESIUM_LIBRARY_MISSING)
+    if (NOT CESIUM_ANY_LIBRARY_MISSING)
         find_library(${MY_LIBRARY_VAR}_LIBRARY_DEBUG
             NAMES
                 ${MY_LIBRARY_NAME}d
@@ -63,16 +65,21 @@ macro(find_cesium_library MY_LIBRARY_VAR MY_LIBRARY_NAME)
             # create the import library for this component:
             add_library(${MY_IMPORT_LIBRARY_NAME} UNKNOWN IMPORTED)
             
+            # Normally you would need to add the include folders to the import library.
+            # But because cesium native's includes need to come FIRST, we will omit
+            # it and specify it later with a BEFORE argument to include_directories.
+            #set_target_properties(${MY_IMPORT_LIBRARY_NAME} PROPERTIES
+            #    INTERFACE_INCLUDE_DIRECTORIES "${CESIUM_NATIVE_INCLUDE_DIR}")
+            
             set_target_properties(${MY_IMPORT_LIBRARY_NAME} PROPERTIES
-                INTERFACE_INCLUDE_DIRECTORIES "${CESIUM_NATIVE_INCLUDE_DIR}"
                 IMPORTED_LOCATION ${MY_RELEASE_LIBRARY}
                 IMPORTED_LOCATION_DEBUG ${MY_DEBUG_LIBRARY} )
 
             # finally, add it to the main list for later.
             list(APPEND CESIUM_NATIVE_IMPORT_LIBRARIES "${MY_IMPORT_LIBRARY_NAME}")
         else()
-            message(NOTICE "Cesium Native: Could not find ${MY_LIBRARY_NAME} ... ")
-            set(CESIUM_LIBRARY_MISSING TRUE)
+            message(WARNING "Cesium Native: Could NOT find ${MY_LIBRARY_NAME}")
+            set(CESIUM_ANY_LIBRARY_MISSING TRUE)
         endif()
     endif()
 endmacro()
@@ -91,6 +98,7 @@ find_cesium_library(CESIUM_NATIVE_GLTF_READER CesiumGltfReader)
 find_cesium_library(CESIUM_NATIVE_ION_CLIENT CesiumIonClient)
 find_cesium_library(CESIUM_NATIVE_JSONREADER CesiumJsonReader)
 find_cesium_library(CESIUM_NATIVE_UTILITY CesiumUtility)
+find_cesium_library(CESIUM_NATIVE_QUANTIZED_MESH_TERRAIN CesiumQuantizedMeshTerrain)
 
 find_cesium_library(CESIUM_NATIVE_RASTER_OVERLAYS CesiumRasterOverlays)
 find_cesium_library(CESIUM_NATIVE_3DTILES_CONTENT Cesium3DTilesContent)
@@ -98,7 +106,7 @@ find_cesium_library(CESIUM_NATIVE_GLTF_CONTENT CesiumGltfContent)
 
 find_cesium_library(CESIUM_NATIVE_CSPRNG csprng)
 find_cesium_library(CESIUM_NATIVE_DRACO draco)
-find_cesium_library(CESIUM_NATIVE_KTX_READ ktx_read)
+find_cesium_library(CESIUM_NATIVE_KTX ktx)
 find_cesium_library(CESIUM_NATIVE_MODPB64 modp_b64)
 find_cesium_library(CESIUM_NATIVE_S2GEOMETRY s2geometry)
 find_cesium_library(CESIUM_NATIVE_SPDLOG spdlog)
@@ -110,7 +118,7 @@ find_cesium_library(CESIUM_NATIVE_MESHOPTIMIZER meshoptimizer)
 
 
 
-if(NOT CESIUM_LIBRARY_MISSING)
+if(NOT CESIUM_ANY_LIBRARY_MISSING)
     set(CESIUM_NATIVE_FOUND TRUE)
 
     # Assemble all the component libraries into one single import library:
@@ -120,6 +128,8 @@ if(NOT CESIUM_LIBRARY_MISSING)
     
     set_property(TARGET OE::CESIUM_NATIVE PROPERTY
         INTERFACE_LINK_LIBRARIES ${CESIUM_NATIVE_IMPORT_LIBRARIES} )
-else()
-    message(WARN "Failed to find all Cesium Native libraries. Check CESIUM_NATIVE_DIR.")
 endif()
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(CesiumNative DEFAULT_MSG CESIUM_NATIVE_FOUND)
+

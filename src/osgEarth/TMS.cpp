@@ -17,11 +17,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
 #include "TMS"
-#include <osgEarth/Registry>
-#include <osgEarth/FileUtils>
-#include <osgEarth/XmlUtils>
-#include <osgEarth/LandCover>
-#include <osgEarth/ImageToHeightFieldConverter>
+#include "Registry"
+#include "FileUtils"
+#include "XmlUtils"
+#include "LandCover"
+#include "ImageToHeightFieldConverter"
+#include "MetaTile"
 #include <osgDB/FileUtils>
 
 using namespace osgEarth;
@@ -194,8 +195,6 @@ void TileMap::computeNumTiles()
             _numTilesWide /= 2;
             _numTilesHigh /= 2;
         }
-
-        OE_DEBUG << LC << "TMS has " << _numTilesWide << ", " << _numTilesHigh << " tiles at level 0 " <<  std::endl;
     }
 }
 
@@ -300,16 +299,21 @@ TileMap::getURL(const osgEarth::TileKey& tilekey, bool invertY)
         {
             if (itr->getOrder() == zoom)
             {
-                std::stringstream ss;
-                std::string basePath = osgDB::getFilePath(_filename);
-                if (!basePath.empty())
+                if (!itr->getHref().empty())
                 {
-                    ss << basePath << "/";
+                    return itr->getHref() + "/" + std::to_string(x) + "/" + std::to_string(y) + "." + _format.getExtension();
                 }
-                ss << zoom << "/" << x << "/" << y << "." << _format.getExtension();
-                std::string ssStr;
-				ssStr = ss.str();
-				return ssStr;
+                else if (osgDB::containsServerAddress(_filename))
+                {
+                    auto f = _filename;
+                    if (!f.empty() && f.back() != '/') f += "/";
+                    return f + std::to_string(zoom) + "/" + std::to_string(x) + "/" + std::to_string(y) + "." + _format.getExtension();
+                }
+                else
+                {
+                    // trip the XML file name off the end of the filename
+                    return osgDB::getFilePath(_filename) + "/" + std::to_string(zoom) + "/" + std::to_string(x) + "/" + std::to_string(y) + "." + _format.getExtension();
+                }
             }
         }
     }
@@ -457,7 +461,7 @@ TileMapReaderWriter::read( const URI& uri, const osgDB::Options* options )
     {
         OE_DEBUG << LC << "Failed to read TMS tile map file from " << uri.full()
             << " ... " << r.errorDetail() << std::endl;
-        return 0L;
+        return nullptr;
     }
 
     // Read tile map into a Config:
@@ -525,7 +529,6 @@ TileMapReaderWriter::read( const Config& conf )
     const Config* formatConf = tileMapConf->find( ELEM_TILE_FORMAT );
     if ( formatConf )
     {
-        OE_DEBUG << LC << "Read TileFormat " << formatConf->value(ATTR_EXTENSION) << std::endl;
         tileMap->getFormat().setExtension( formatConf->value(ATTR_EXTENSION) );
         tileMap->getFormat().setMimeType ( formatConf->value(ATTR_MIME_TYPE) );
         tileMap->getFormat().setWidth    ( formatConf->value<unsigned>(ATTR_WIDTH,  256) );
@@ -579,7 +582,7 @@ TileMapReaderWriter::read( const Config& conf )
     if ( extentsConf )
     {
         osg::ref_ptr< const osgEarth::Profile > profile = tileMap->createProfile();
-        OE_DEBUG << LC << "Found DataExtents " << std::endl;
+        //OE_DEBUG << LC << "Found DataExtents " << std::endl;
         const ConfigSet& children = extentsConf->children(ELEM_DATA_EXTENT);
         for( ConfigSet::const_iterator i = children.begin(); i != children.end(); ++i )
         {
@@ -830,7 +833,7 @@ TMS::Driver::open(const URI& uri,
     // A repo is writable only if it's local.
     if ( uri.isRemote() )
     {
-        OE_DEBUG << LC << "Repo is remote; opening in read-only mode" << std::endl;
+        OE_DEBUG << LC << uri.base() << ": repo is remote; opening in read-only mode" << std::endl;
     }
 
     // Is this a new repo? (You can only create a new repo at a local non-archive URI.)
@@ -852,9 +855,8 @@ TMS::Driver::open(const URI& uri,
     // Take the override profile if one is given
     if ( profile.valid() )
     {
-        OE_INFO << LC
-            << "Using express profile \"" << profile->toString()
-            << "\" for URI \"" << uri.base() << "\""
+        OE_DEBUG << LC << uri.base()
+            << ": Using express profile \"" << profile->toString()
             << std::endl;
 
         DataExtentList extents;
@@ -876,7 +878,7 @@ TMS::Driver::open(const URI& uri,
             }
 
             TMS::TileMapReaderWriter::write( _tileMap.get(), uri.full() );
-            OE_INFO << LC << "Created new TMS repo at " << uri.full() << std::endl;
+            OE_INFO << LC << uri.base() << ": created new TMS repo" << std::endl;
         }
     }
 
@@ -890,8 +892,8 @@ TMS::Driver::open(const URI& uri,
             return Status::Error( Status::ResourceUnavailable, Stringify() << "Failed to read configuration from " << uri.full() );
         }
 
-        OE_DEBUG << LC
-            << "TMS tile map datestamp = "
+        OE_DEBUG << LC << uri.base()
+            << ": TMS tile map datestamp = "
             << DateTime(_tileMap->getTimeStamp()).asRFC1123()
             << std::endl;
 
@@ -918,7 +920,7 @@ TMS::Driver::open(const URI& uri,
     // Automatically set the min and max level of the TileMap
     if ( _tileMap->getTileSets().size() > 0 )
     {
-        OE_DEBUG << LC << "TileMap min/max " << _tileMap->getMinLevel() << ", " << _tileMap->getMaxLevel() << std::endl;
+        OE_DEBUG << LC << uri.base() << ": TileMap min/max " << _tileMap->getMinLevel() << ", " << _tileMap->getMaxLevel() << std::endl;
         if (_tileMap->getDataExtents().size() > 0)
         {
             for (DataExtentList::iterator itr = _tileMap->getDataExtents().begin(); itr != _tileMap->getDataExtents().end(); ++itr)
@@ -967,7 +969,6 @@ TMS::Driver::read(const URI& uri,
                 //of the tilemap and create a transparent image.
                 if (key.getLevelOfDetail() <= _tileMap->getMaxLevel())
                 {
-                    OE_DEBUG << LC << "Returning empty image " << std::endl;
                     if (_isCoverage)
                         return LandCover::createEmptyImage();
                     else
@@ -1080,10 +1081,10 @@ TMS::Driver::resolveWriter(const std::string& format)
         _writer.valid() &&
         (_writer->acceptsExtension("jpeg") || _writer->acceptsExtension("jpg"));
 
-    if (_forceRGBWrites)
-    {
-        OE_INFO << LC << "Note: images will be stored as RGB" << std::endl;
-    }
+    //if (_forceRGBWrites)
+    //{
+    //    OE_DEBUG << LC << uri.base() << ": images will be stored as RGB" << std::endl;
+    //}
 
     return _writer.valid();
 }
@@ -1237,6 +1238,11 @@ TMSElevationLayer::Options::getConfig() const
 {
     Config conf = ElevationLayer::Options::getConfig();
     writeTo(conf);
+    conf.set("elevation_encoding", elevationEncoding());
+    conf.set("stitch_edges", stitchEdges());
+    conf.set("interpolation", "nearest", interpolation(), osgEarth::INTERP_NEAREST);
+    conf.set("interpolation", "average", interpolation(), osgEarth::INTERP_AVERAGE);
+    conf.set("interpolation", "bilinear", interpolation(), osgEarth::INTERP_BILINEAR);
     return conf;
 }
 
@@ -1244,6 +1250,11 @@ void
 TMSElevationLayer::Options::fromConfig(const Config& conf)
 {
     readFrom(conf);
+    conf.get("elevation_encoding", elevationEncoding());
+    conf.get("stitch_edges", stitchEdges());
+    conf.get("interpolation", "nearest", interpolation(), osgEarth::INTERP_NEAREST);
+    conf.get("interpolation", "average", interpolation(), osgEarth::INTERP_AVERAGE);
+    conf.get("interpolation", "bilinear", interpolation(), osgEarth::INTERP_BILINEAR);
 }
 
 
@@ -1254,6 +1265,9 @@ REGISTER_OSGEARTH_LAYER(tmselevation, TMSElevationLayer);
 OE_LAYER_PROPERTY_IMPL(TMSElevationLayer, URI, URL, url);
 OE_LAYER_PROPERTY_IMPL(TMSElevationLayer, std::string, TMSType, tmsType);
 OE_LAYER_PROPERTY_IMPL(TMSElevationLayer, std::string, Format, format);
+OE_LAYER_PROPERTY_IMPL(TMSElevationLayer, std::string, ElevationEncoding, elevationEncoding);
+OE_LAYER_PROPERTY_IMPL(TMSElevationLayer, bool, StitchEdges, stitchEdges);
+OE_LAYER_PROPERTY_IMPL(TMSElevationLayer, RasterInterpolation, Interpolation, interpolation);
 
 void
 TMSElevationLayer::init()
@@ -1309,31 +1323,122 @@ TMSElevationLayer::closeImplementation()
 GeoHeightField
 TMSElevationLayer::createHeightFieldImplementation(const TileKey& key, ProgressCallback* progress) const
 {
-
-    if (_imageLayer.valid() == false ||
-        !_imageLayer->isOpen())
+    if (_imageLayer.valid() == false || !_imageLayer->isOpen() || !_imageLayer->mayHaveData(key))
     {
         return GeoHeightField::INVALID;
     }
 
-    // Make an image, then convert it to a heightfield
-    GeoImage image = _imageLayer->createImageImplementation(key, progress);
-    if (image.valid())
+    std::function<float(const osg::Vec4f&)> decode;
+
+    if (options().elevationEncoding() == "mapbox")
     {
-        if (image.getImage()->s() > 1 && image.getImage()->t() > 1)
-        {
-            ImageToHeightFieldConverter conv;
-            osg::HeightField* hf = conv.convert(image.getImage());
-            return GeoHeightField(hf, key.getExtent());
-        }
-        else
-        {
-            return GeoHeightField::INVALID;
-        }
+        decode = [](const osg::Vec4f& p) -> float
+            {
+                return -10000.0f + ((p.r() * 255.0f * 256.0f * 256.0f + p.g() * 255.0f * 256.0f + p.b() * 255.0f) * 0.1f);
+            };
+    }
+    else if (options().elevationEncoding() == "terrarium")
+    {
+        decode = [](const osg::Vec4f& p) -> float
+            {
+                return (p.r() * 255.0f * 256.0f + p.g() * 255.0f + p.b() * 255.0f / 256.0f) - 32768.0f;
+            };
     }
     else
     {
-        return GeoHeightField(image.getStatus());
+        decode = [](const osg::Vec4f& p) -> float
+            {
+                return p.r();
+            };
+    }
+
+    if (options().stitchEdges() == true)
+    {
+        MetaTile<GeoImage> metaImage;
+        metaImage.setCreateTileFunction([this](const TileKey& key, ProgressCallback* progress)
+            {
+                Util::LRUCache<TileKey, GeoImage>::Record r;
+                if (_stitchingCache.get(key, r))
+                {
+                    return r.value();
+                }
+                else
+                {
+                    GeoImage image = _imageLayer->createImage(key, progress);
+                    if (image.valid())
+                    {
+                        _stitchingCache.insert(key, image);
+                    }
+                    return image;
+                }
+            });
+        metaImage.setCenterTileKey(key, progress);
+
+        if (!metaImage.getCenterTile().valid() || !metaImage.getScaleBias().isIdentity())
+        {
+            return {};
+        }
+
+        osg::ref_ptr<osg::HeightField> hf = new osg::HeightField();
+        hf->allocate(getTileSize(), getTileSize());
+        std::fill(hf->getHeightList().begin(), hf->getHeightList().end(), NO_DATA_VALUE);
+
+        double xmin, ymin, xmax, ymax;
+        key.getExtent().getBounds(xmin, ymin, xmax, ymax);
+
+        osg::Vec4f pixel;
+        for (int c = 0; c < getTileSize(); c++)
+        {
+            if (progress && progress->isCanceled())
+                return {};
+            
+            double u = (double)c / (double)(getTileSize() - 1);
+            double x = xmin + u * (xmax - xmin);
+            for (int r = 0; r < getTileSize(); r++)
+            {
+                double v = (double)r / (double)(getTileSize() - 1);
+                double y = ymin + v * (ymax - ymin);
+                if (metaImage.readAtCoord(pixel, x, y))
+                {
+                    hf->setHeight(c, r, decode(pixel));
+                }
+            }
+        }
+
+        return GeoHeightField(hf.release(), key.getExtent());
+    }
+
+    else
+    {
+        // Make an image, then convert it to a heightfield
+        GeoImage geoImage = _imageLayer->createImageImplementation(key, progress);
+        if (geoImage.valid())
+        {
+            const osg::Image* image = geoImage.getImage();
+
+#if 0
+            ImageToHeightFieldConverter converter;
+            osg::ref_ptr<osg::HeightField> hf = converter.convert(image);
+            return GeoHeightField(hf.get(), key.getExtent());
+
+#else
+            // Allocate the heightfield.
+            osg::HeightField* hf = new osg::HeightField();
+            hf->allocate(image->s(), image->t());
+
+            ImageUtils::PixelReader read(image);
+            osg::Vec4f pixel;
+            read.forEachPixel([&](auto& i)
+                {
+                    read(pixel, i.s(), i.t());
+                    hf->setHeight(i.s(), i.t(), decode(pixel));
+                });
+
+            return GeoHeightField(hf, key.getExtent());
+#endif
+        }
+
+        return GeoHeightField::INVALID;
     }
 }
 

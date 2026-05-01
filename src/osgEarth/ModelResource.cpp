@@ -117,7 +117,7 @@ ModelResource::createNodeFromURI( const URI& uri, const osgDB::Options* dbOption
     {
         node = r.releaseNode();
         
-        OE_INFO << LC << "Loaded " << uri.base() << "(from " << (r.isFromCache()? "cache" : "source") << ")"
+        OE_DEBUG << LC << "Loaded " << uri.base() << " (from " << (r.isFromCache()? "cache" : "source") << ")"
             << std::endl;
 
         osgUtil::Optimizer o;
@@ -139,8 +139,11 @@ ModelResource::createNodeFromURI( const URI& uri, const osgDB::Options* dbOption
     }
     else // failing that, fall back on the old encoding format..
     {
-        StringVector tok;
-        StringTokenizer( *uri, tok, "()" );
+        auto tok = StringTokenizer()
+            .delim("(").delim(")")
+            .standardQuotes()
+            .tokenize(*uri);
+
         if (tok.size() >= 2)
         {
             node = createNodeFromURI( URI(tok[1]), options.get() );

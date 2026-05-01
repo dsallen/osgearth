@@ -143,6 +143,10 @@ TrackNode::construct()
             _imageStateSet->addUniform(new osg::Uniform("oe_TrackNode_tex", 0));
         }
     }
+
+    // supports culling by visibility flag
+    auto cb = new CheckVisibilityCallback();
+    this->addCullCallback(cb);
 }
 
 void

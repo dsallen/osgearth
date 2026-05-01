@@ -69,14 +69,14 @@ TileNode::TileNode(const TileKey& key, TileNode* parent, EngineContext* context,
     unsigned tw, th;
     _key.getProfile()->getNumTiles(_key.getLOD(), tw, th);
 
-    const double m = 65536; //pow(2.0, 16.0);
+    //const double m = 65536; //pow(2.0, 16.0);
 
     double x = (double)_key.getTileX();
     double y = (double)(th - _key.getTileY() - 1);
 
     _tileKeyValue.set(
-        (float)(x-tw/2), //(int)fmod(x, m),
-        (float)(y-th/2), // (int)fmod(y, m),
+        (float)x, //(float)(x-tw/2), //(int)fmod(x, m),
+        (float)y, //(float)(y-th/2), // (int)fmod(y, m),
         (float)_key.getLOD(),
         -1.0f);
 
@@ -133,20 +133,17 @@ TileNode::createGeometry(Cancelable* progress)
     if (geom.valid())
     {
         // Create the drawable for the terrain surface:
-        TileDrawable* surfaceDrawable = new TileDrawable(
-            _key,
-            geom.get(),
-            tileSize);
+        auto* drawable = new TileDrawable(_key, geom.get(), tileSize);
 
         // Give the tile Drawable access to the render model so it can properly
         // calculate its bounding box and sphere.
-        surfaceDrawable->setModifyBBoxCallback(_context->getModifyBBoxCallback());
+        drawable->setModifyBBoxCallback(_context->getModifyBBoxCallback());
 
         osg::ref_ptr<const osg::Image> elevationRaster = getElevationRaster();
         osg::Matrixf elevationMatrix = getElevationMatrix();
 
-        // Create the node to house the tile drawable:
-        _surface = new SurfaceNode(_key, surfaceDrawable);
+        // Create the node to house the tile drawable and perform horizon culling:
+        _surface = new SurfaceNode(_key, drawable);
 
         if (elevationRaster.valid())
         {
@@ -218,7 +215,6 @@ TileNode::initializeData()
     _context->tiles()->add( this );
 
     // tell the world.
-    OE_DEBUG << LC << "notify (create) key " << getKey().str() << std::endl;
     _context->getEngine()->getTerrain()->notifyTileUpdate(getKey(), this);
 }
 
@@ -229,8 +225,8 @@ TileNode::computeBound() const
     if (_surface.valid())
     {
         bs = _surface->getBound();
-        const osg::BoundingBox& bbox = _surface->getAlignedBoundingBox();
-        _tileKeyValue.a() = osg::maximum( (bbox.xMax()-bbox.xMin()), (bbox.yMax()-bbox.yMin()) );
+        const osg::BoundingBox& bbox = _surface->_drawable->getBoundingBox();
+        _tileKeyValue.a() = std::max( (bbox.xMax()-bbox.xMin()), (bbox.yMax()-bbox.yMin()) );
     }    
     return bs;
 }
@@ -279,14 +275,14 @@ TileNode::updateElevationRaster()
 const osg::Image*
 TileNode::getElevationRaster() const
 {
-    return _surface.valid() ? _surface->getElevationRaster() : 0L;
+    return _surface.valid() ? _surface->_drawable->getElevationRaster() : 0L;
 }
 
 const osg::Matrixf&
 TileNode::getElevationMatrix() const
 {
     static osg::Matrixf s_identity;
-    return _surface.valid() ? _surface->getElevationMatrix() : s_identity;
+    return _surface.valid() ? _surface->_drawable->getElevationMatrix() : s_identity;
 }
 
 void
@@ -348,22 +344,26 @@ TileNode::shouldSubDivide(TerrainCuller* culler, const SelectionInfo& selectionI
         // allowable on-screen tile size in pixels.
         if (_context->options().getLODMethod() == LODMethod::SCREEN_SPACE)
         {
-            float tileSizeInPixels = -1.0;
+            // assume the imagery of a tile to be this dimension (pixels). If so, once the
+            // size of tile geometry on screen exceeds that, it's time to subdivide.
+            float tileImagerySize = _context->options().getTilePixelSize();
+
+            float tileGeometrySizeInPixels = -1.0;
 
             if (context->getEngine()->getComputeTilePixelSizeCallback())
             {
-                tileSizeInPixels = (context->getEngine()->getComputeTilePixelSizeCallback())(this, *culler->_cv);
+                tileGeometrySizeInPixels = (context->getEngine()->getComputeTilePixelSizeCallback())(this, *culler->_cv);
             }
 
-            if (tileSizeInPixels <= 0.0)
+            if (tileGeometrySizeInPixels <= 0.0)
             {
-                tileSizeInPixels = _surface->getPixelSizeOnScreen(culler);
+                tileGeometrySizeInPixels = _surface->getPixelSizeOnScreen(culler);
             }
         
-            float effectivePixelSize =
-                _context->options().getTilePixelSize() + _context->options().getScreenSpaceError();
+            // SSE is the amount of error we are willing to tolerate in the screen space size
+            float pixelSizeThreshold = tileImagerySize + _context->options().getScreenSpaceError();
 
-            return (tileSizeInPixels > effectivePixelSize);
+            return (tileGeometrySizeInPixels > pixelSizeThreshold);
         }
 
         // In DISTANCE-TO-EYE mode, use the visibility ranges precomputed in the SelectionInfo.
@@ -408,7 +408,7 @@ TileNode::cull_spy(TerrainCuller* culler)
     // trick to spy on another camera.
     unsigned frame = context->getClock()->getFrame();
 
-    if ( frame - _surface->getLastFramePassedCull() < 2u)
+    if ( frame - _surface->_lastFramePassedCull < 2u)
     {
         _surface->accept( *culler );
     }
@@ -439,7 +439,6 @@ TileNode::cull(TerrainCuller* culler)
     bool canLoadData =
         _doNotExpire ||
         _key.getLOD() >= _context->options().getFirstLOD();
-        //_key.getLOD() >= _context->options().getMinLOD();
 
     // whether to accept the current surface node and not the children.
     bool canAcceptSurface = false;
@@ -562,10 +561,8 @@ TileNode::traverse(osg::NodeVisitor& nv)
             }
 
             else if (
-                // coarse bounds check:
-                !culler->isCulled(*this) && 
-                // horizon and bbox check:
-                _surface->isVisibleFrom(culler->getViewPointLocal()))
+                !culler->isCulled(*this) && // coarse bounds check
+                _surface->isVisible(culler->_horizon.get())) // horizon check
             {
                 cull(culler);
             }
@@ -697,14 +694,13 @@ TileNode::createChildren()
                         {
                             auto childkey = tile->getKey().createChildKey(q);
                             result[q] = tile->createChild(childkey, &state);
-                            //result.emplace_back(tile->createChild(childkey, &state));
                         }
                     }
 
                     if (state.canceled())
                     {
-                        //result.clear();
-                        for (int i = 0; i < 4; ++i) result[i] = {};
+                        for (int i = 0; i < 4; ++i)
+                            result[i] = {};
                     }
 
                     return result;
@@ -902,7 +898,7 @@ TileNode::merge(const TerrainTileModel* model, const CreateTileManifest& manifes
                     else
                     {
                         // note: this can happen with an async layer load
-                        OE_DEBUG << "no parent pass in my pass. key=" << model->key.str() << std::endl;
+                        //OE_DEBUG << "no parent pass in my pass. key=" << model->key.str() << std::endl;
                     }
 
                     // check whether it's actually a futuretexture.
@@ -942,7 +938,7 @@ TileNode::merge(const TerrainTileModel* model, const CreateTileManifest& manifes
                 manifest.includes(myPass.layer()) &&
                 !uidsLoaded.contains(myPass.sourceUID()))
             {
-                OE_DEBUG << LC << "Releasing orphaned layer " << myPass.layer()->getName() << std::endl;
+                //OE_DEBUG << LC << "Releasing orphaned layer " << myPass.layer()->getName() << std::endl;
 
                 // release the GL objects associated with this pass.
                 // taking this out...can cause "flashing" issues

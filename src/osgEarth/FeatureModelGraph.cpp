@@ -94,11 +94,6 @@ namespace
                 !_session.valid() ||
                 !_session->hasMap();
 
-            if (done)
-            {
-                OE_DEBUG << "FMG: canceling load on thread " << std::this_thread::get_id() << std::endl;
-            }
-
             return done;
         }
     };
@@ -271,13 +266,6 @@ namespace
         p->setRadius(bs.radius());
         p->setMinRange(minRange);
         p->setMaxRange(maxRange);
-
-        if( layout.minPixels().isSet() )
-          p->setMinPixels(layout.minPixels().get());
-
-        if( layout.maxPixels().isSet() )
-          p->setMaxPixels(layout.maxPixels().get());
-
         p->setPriorityScale(layout.priorityScale().get());
         p->setSceneGraphCallbacks(sgCallbacks);
         return p;
@@ -362,7 +350,6 @@ FeatureModelGraph::FeatureModelGraph(const FeatureModelOptions& options) :
     _featureExtentClamped(false),
     _useTiledSource(false),
     _isActive(false),
-    _elevationSet(),
     loadedTiles(std::make_shared<std::atomic_int>(0))
 {
     //nop
@@ -385,6 +372,12 @@ FeatureModelGraph::setUseNVGL(bool value)
                 return true;
             }));
     }
+}
+
+void
+FeatureModelGraph::setFeatureQueryBufferWidthAsPercentage(double value)
+{
+    _featureQueryBufferWidthAsPercentage = value;
 }
 
 void
@@ -569,7 +562,7 @@ FeatureModelGraph::open()
 
             // The tilesize factor must be at least 1.0 to avoid culling the tile when you are within it's bounding sphere.
             tileSizeFactor = osg::maximum(tileSizeFactor, 1.0f);
-            OE_INFO << LC << "Computed a tilesize factor of " << tileSizeFactor << " with max range setting of " << maxRangeAtFirstLevel << std::endl;
+            OE_DEBUG << LC << "Computed a tilesize factor of " << tileSizeFactor << " with max range setting of " << maxRangeAtFirstLevel << std::endl;
             _options.layout().mutable_value().tileSizeFactor() = tileSizeFactor;
         }
 
@@ -630,7 +623,7 @@ FeatureModelGraph::open()
                 maxRange = _options.layout().mutable_value().tileSizeFactor().value() * _options.layout()->tileSize().get();
             }
 
-            OE_INFO << LC
+            OE_DEBUG << LC
                 << "Tile size = " << (*_options.layout()->tileSize()) 
                 << ", calc TSF = " << (*_options.layout()->tileSizeFactor())
                 << std::endl;
@@ -641,7 +634,7 @@ FeatureModelGraph::open()
         {
             float size = (2.0*_fullWorldBound.radius() / 1.1412);
             _options.layout().mutable_value().tileSizeFactor() = maxRange.get() / size;
-            OE_INFO << LC 
+            OE_DEBUG << LC
                 << "maxRange = " << maxRange.get() 
                 << ", calc tile size = " << size 
                 << ", calc TSF = " << (*_options.layout()->tileSizeFactor()) << std::endl;
@@ -730,7 +723,6 @@ FeatureModelGraph::shutdown()
 FeatureModelGraph::~FeatureModelGraph()
 {
     //nop
-    OE_DEBUG << "~FeatureModelGraph" << std::endl;
 }
 
 void
@@ -811,25 +803,9 @@ FeatureModelGraph::getBoundInWorldCoords(const GeoExtent& extent, const Profile*
             map->getLayers<ElevationLayer>(elevationLayers);
             if (!elevationLayers.empty())
             {
-                unsigned actual_lod = lod;
                 // Get the approximate elevation range if we have elevation data in the map
                 lod = osg::clampBetween(lod, 0u, ElevationRanges::getMaxLevel());
                 GeoPoint centerWGS84 = center.transform(ElevationRanges::getProfile()->getSRS());
-
-                float elevation = NO_DATA_VALUE;
-                float sampledMin = elevation;
-                float sampledMax = elevation;
-                if( actual_lod != lod )
-                {
-                   ElevationSample sample = map->getElevationPool()->getSample(centerWGS84, &_elevationSet);
-                   if( sample.hasData() )
-                   {
-                      elevation = sample.elevation();
-                      float adjust = (40000000*0.05)/pow(2.0,actual_lod);
-                      sampledMin = elevation - adjust;
-                      sampledMax = elevation + adjust;
-                   }
-                }
 
                 TileKey rangeKey = ElevationRanges::getProfile()->createTileKey(centerWGS84.x(), centerWGS84.y(), lod);
                 short min, max;
@@ -841,23 +817,10 @@ FeatureModelGraph::getBoundInWorldCoords(const GeoExtent& extent, const Profile*
                 {
                     ElevationRanges::getDefaultElevationRange(min, max);
                 }
-
-                minElevation = (float)min;
-                maxElevation = (float)max;
-
-                if( sampledMin != NO_DATA_VALUE && sampledMin > minElevation)
-                {
-                   minElevation = sampledMin;
-                }
-
-                if( sampledMax != NO_DATA_VALUE && sampledMax < maxElevation )
-                {
-                   maxElevation = sampledMax;
-                }
-
-                // Clamp the values to avoid extreme underwater values.
-                minElevation = osg::maximum(minElevation, -500.0f);
-                maxElevation = osg::maximum(maxElevation, -500.0f);
+                // Clamp the min value to avoid extreme underwater values.
+                minElevation = osg::maximum(min, (short)-500);
+                // Add a little bit extra of extra height to account for feature data.
+                maxElevation = max + 100.0f;
             }
         }
 #endif
@@ -883,26 +846,6 @@ FeatureModelGraph::setupPaging()
     osg::BoundingSphered bs = getBoundInWorldCoords(_usableMapExtent);
 
     const FeatureProfile* featureProfile = _session->getFeatureSource()->getFeatureProfile();
-
-#if 0
-    optional<float> maxRangeOverride;
-
-    if (_options.layout()->maxRange().isSet() || _maxRange.isSet())
-    {
-        // select the max range either from the Layout or from the model layer options.
-        float userMaxRange = FLT_MAX;
-        if (_options.layout()->maxRange().isSet())
-            userMaxRange = *_options.layout()->maxRange();
-        if (_maxRange.isSet())
-            userMaxRange = osg::minimum(userMaxRange, _maxRange.get());
-
-        if (!featureProfile->isTiled())
-        {
-            // user set a max_range, but we'd not tiled. Just override the top level plod.
-            maxRangeOverride = userMaxRange;
-        }
-    }
-#endif
 
     float maxRange = bs.radius() * _options.layout()->tileSizeFactor().get();
 
@@ -1090,7 +1033,7 @@ FeatureModelGraph::load(
         // if the result group contains no data, blacklist it so we never try to load it again.
         Threading::ScopedWriteLock exclusiveLock(_blacklistMutex);
         _blacklist.insert(uri);
-        OE_DEBUG << LC << "Blacklisting: " << uri << std::endl;
+        //OE_DEBUG << LC << "Blacklisting: " << uri << std::endl;
     }
 
     // Done - run the pre-merge operations.
@@ -1172,13 +1115,6 @@ FeatureModelGraph::buildSubTilePagedLODs(
 
             if (!blacklisted)
             {
-                OE_DEBUG << LC << "    " << uri
-                    << std::fixed
-                    << "; center = " << subtile_bs.center().x() << "," << subtile_bs.center().y() << "," << subtile_bs.center().z()
-                    << "; radius = " << subtile_bs.radius()
-                    << "; maxrange = " << maxRange
-                    << std::endl;
-
                 osg::ref_ptr<osg::Node> childNode;
 
                 if (_options.layout()->paged() == true)
@@ -1271,14 +1207,14 @@ FeatureModelGraph::readTileFromCache(const std::string&    cacheKey,
 
         if (policy.isSet() && policy->isExpired(rr.lastModifiedTime()))
         {
-            OE_DEBUG << LC << "Tile " << cacheKey << " is cached but expired.\n";
+            // tile is cached but expired; return null.
             return 0L;
         }
 
         if (rr.succeeded())
         {
+            // loaded from cache.
             group = dynamic_cast<osg::Group*>(rr.getNode());
-            OE_DEBUG << LC << "Loaded from the cache (key = " << cacheKey << ")\n";
             ++_cacheHits;
 
             // remap the feature index.
@@ -1297,7 +1233,6 @@ FeatureModelGraph::readTileFromCache(const std::string&    cacheKey,
         else if (rr.code() == ReadResult::RESULT_NOT_FOUND)
         {
             //nop -- object not in cache
-            OE_DEBUG << LC << "Object not in cache (cacheKey=" << cacheKey << ") " << rr.getResultCodeString() << "; " << rr.errorDetail() << "\n";
         }
         else
         {
@@ -1305,11 +1240,7 @@ FeatureModelGraph::readTileFromCache(const std::string&    cacheKey,
             OE_WARN << LC << "Cache read error (cacheKey=" << cacheKey << ") " << rr.getResultCodeString() << "; " << rr.errorDetail() << "\n";
         }
 
-        OE_DEBUG << "cache hit ratio = " << float(_cacheHits) / float(_cacheReads) << "\n";
-    }
-    else
-    {
-        OE_DEBUG << LC << "No cachebin in the readOptions - caching not enabled for this layer\n";
+        //OE_DEBUG << "cache hit ratio = " << float(_cacheHits) / float(_cacheReads) << "\n";
     }
 
     return group.release();
@@ -1331,7 +1262,7 @@ FeatureModelGraph::writeTileToCache(const std::string&    cacheKey,
     if (cacheBin && policy->isCacheWriteable())
     {
         cacheBin->writeNode(cacheKey, node, Config(), writeOptions);
-        OE_DEBUG << LC << "Wrote " << cacheKey << " to cache\n";
+        //OE_DEBUG << LC << "Wrote " << cacheKey << " to cache\n";
     }
     return true;
 }
@@ -1398,6 +1329,30 @@ FeatureModelGraph::buildTile(
         // add a tile key to the query if there is one, to support TFS-style queries
         if (key)
             query.tileKey() = *key;
+
+        // buffer the query?
+        if (_featureQueryBufferWidthAsPercentage.isSet())
+        {
+            if (query.bounds().isSet())
+            {
+                auto* fp = featureSource->getFeatureProfile();
+                double w = width(query.bounds().value());
+                double h = height(query.bounds().value());
+                double buffer = sqrt(w * h) * _featureQueryBufferWidthAsPercentage.value();
+                query.buffer() = Distance(buffer, fp->getSRS()->getUnits());
+            }
+            else if (query.tileKey().isSet())
+            {
+                double w = query.tileKey()->getExtent().width();
+                double h = query.tileKey()->getExtent().height();
+                double buffer = sqrt(w * h) * _featureQueryBufferWidthAsPercentage.value();
+                query.buffer() = Distance(buffer, query.tileKey()->getProfile()->getSRS()->getUnits());
+            }
+            else
+            {
+                OE_WARN << LC << "Requested a buffer width as a percentage but no bounds or tilekey was set" << std::endl;
+            }
+        }
 
         // does the level have a style name set?
         if (level.styleName().isSet())
@@ -1644,10 +1599,6 @@ FeatureModelGraph::build(
         }
 
         // if no selectors are present, render all the features with a single style.
-        // update scottm 05/09/2025
-        // if some of the optional style expressions are set, we must now
-        // embed the styles because each feature will  need to have its style
-        // expressions evaluated with the feature and the resulting style embedded with the style
         else
         {
             Style combinedStyle = defaultStyle;
@@ -1656,133 +1607,10 @@ FeatureModelGraph::build(
             if (defaultStyle.empty())
                 combinedStyle = *styles->getDefaultStyle();
 
-            // do we need to embed styles?
-            // if the style has expressions set, then yes
-            bool needs_embed =
-               (
-                  combinedStyle.has<PointSymbol>() &&
-                     (combinedStyle.get<PointSymbol>()->sizeExpr().isSet() ||
-                      (combinedStyle.get<PointSymbol>()->fill().isSet() &&
-                       combinedStyle.get<PointSymbol>()->fill()->colorExpr().isSet())
-                     )
-               ) ||
-               (
-                  combinedStyle.has<LineSymbol>() &&
-                  combinedStyle.get<LineSymbol>()->stroke().isSet() &&
-                  (
-                     combinedStyle.get<LineSymbol>()->stroke()->colorExpr().isSet() ||
-                     combinedStyle.get<LineSymbol>()->stroke()->widthExpr().isSet()
-                  )
-               ) ||
-               (
-                  combinedStyle.has<PolygonSymbol>() &&
-                  combinedStyle.get<PolygonSymbol>()->fill().isSet() &&
-                  combinedStyle.get<PolygonSymbol>()->fill()->colorExpr().isSet()
-               );
+            osg::Group* styleGroup = createStyleGroup(combinedStyle, baseQuery, index, readOptions, progress);
 
-            if (needs_embed)
-            {
-               const FeatureProfile* featureProfile = source->getFeatureProfile();
-               FilterContext context(_session.get(), featureProfile, workingExtent, index);
-               osg::ref_ptr<FeatureCursor> cursor = source->createFeatureCursor(baseQuery, _filterChain, &context, progress);
-               while (cursor.valid() && cursor->hasMore())
-               {
-                   Style style = Style(combinedStyle);
-                   Feature* feature = cursor->nextFeature();
-                   if (feature)
-                   {
-                       // eval the style expressions if they are set
-                       if (style.has<PointSymbol>())
-                       {
-                          PointSymbol* ps = style.get<PointSymbol>();
-                          if (ps->sizeExpr().isSet())
-                             ps->size() = feature->eval(ps->sizeExpr().mutable_value(), &context);
-
-                         if (ps->fill().isSet() && ps->fill()->colorExpr().isSet() )
-                         {
-                            std::string clr = feature->eval(ps->fill()->colorExpr().mutable_value(), &context);
-                            if( !clr.empty() )
-                               ps->fill()->color() = Color(clr, Color::Format::RGBA);
-                            else
-                               ps->fill()->color() = Color::Transparent;
-                         }
-
-                       }
-
-                       if (style.has<LineSymbol>())
-                       {
-                          LineSymbol* ls = style.get<LineSymbol>();
-                          if (ls->stroke().isSet() && ls->stroke()->widthExpr().isSet())
-                             ls->stroke()->width() = feature->eval(ls->stroke()->widthExpr().mutable_value(), &context);
-                          if (ls->stroke().isSet() && ls->stroke()->colorExpr().isSet())
-                          {
-                             std::string clr = feature->eval(ls->stroke()->colorExpr().mutable_value(), &context);
-                             if( !clr.empty() )
-                                ls->stroke()->color() = Color( clr, Color::Format::RGBA );
-                             else
-                                ls->stroke()->color() = Color::Transparent;
-                          }                          
-                       }
-
-                       if (style.has<PolygonSymbol>())
-                       {
-                          PolygonSymbol* poly = style.get<PolygonSymbol>();
-                          if (poly->fill().isSet() && poly->fill()->colorExpr().isSet())
-                          {
-                             std::string clr = feature->eval(poly->fill()->colorExpr().mutable_value(), &context);
-                             if( !clr.empty () )
-                                poly->fill()->color() = Color(clr, Color::Format::RGBA);
-                             else
-                                poly->fill()->color() = Color::Transparent;
-                          }
-                       }
-
-                       feature->style() = style;
-
-                       FeatureList list;
-                       list.push_back(feature);
-                       osg::ref_ptr<FeatureCursor> cursor = new FeatureListCursor(list);
-                       osg::ref_ptr<osg::Node> node;
-                       osg::Group* styleGroup = getOrCreateStyleGroupFromFactory(*feature->style());
-                       if (styleGroup)
-                       {
-                           if (!group->containsNode(styleGroup))
-                               group->addChild(styleGroup);
-                       }
-
-                       if (createOrUpdateNode(
-                           cursor.get(),
-                           *feature->style(),
-                           context,
-                           readOptions,
-                           node,
-                           baseQuery))
-                       {
-                           if (node.valid())
-                           {
-                               if (styleGroup)
-                                   styleGroup->addChild(node.get());
-                               else
-                                   group->addChild(node.get());
-                           }
-                       }
-                   }
-
-                   if (progress && progress->isCanceled())
-                       return NULL;
-               }
-            }  // if (needs_embed)
-            else
-            {
-               // since no style expressions were set we can safely do the "old" way
-               osg::Group* styleGroup = createStyleGroup(
-                  combinedStyle,
-                  baseQuery,
-                  index,
-                  readOptions, progress);
-               if (styleGroup && !group->containsNode(styleGroup))
-                  group->addChild(styleGroup);
-            }
+            if (styleGroup && !group->containsNode(styleGroup))
+                group->addChild(styleGroup);
         }
     }
 
@@ -1811,7 +1639,7 @@ FeatureModelGraph::createOrUpdateNode(FeatureCursor*           cursor,
                 _texturesCache, _texturesCacheMutex));
 
         osg::ref_ptr<ChonkDrawable> drawable = new ChonkDrawable();
-        
+
         if (xform)
         {
             for (unsigned i = 0; i < xform->getNumChildren(); ++i)
@@ -1992,32 +1820,29 @@ FeatureModelGraph::createStyleGroup(const Style&          style,
 
     FilterContext context(contextPrototype);
 
-    // First Crop the feature set to the working extent.
-    // Note: There is an obscure edge case that can happen is a feature's centroid
-    // falls exactly on the crop extent boundary. In that case the feature can
-    // show up in more than one tile. It's rare and not trivial to mitigate so for now
-    // we have decided to do nothing. :)
-    CropFilter crop(
-        _options.layout().isSet() && _options.layout()->cropFeatures() == true ?
-        CropFilter::METHOD_CROP_TO_EXTENT : CropFilter::METHOD_CENTROID);
-
-    unsigned sizeBefore = workingSet.size();
-
-    context = crop.push(workingSet, context);
-
-    unsigned sizeAfter = workingSet.size();
-
-    OE_DEBUG << LC << "Cropped out " << sizeBefore - sizeAfter << " features\n";
-
-    // next, if the usable extent is less than the full extent (i.e. we had to clamp the feature
-    // extent to fit on the map), calculate the extent of the features in this tile and
-    // crop to the map extent if necessary. (Note, if cropFeatures was set to true, this is
-    // already done)
-    if (_featureExtentClamped && _options.layout().isSet() && _options.layout()->cropFeatures() == false)
+    if (_options.autoCropFeatures() == true)
     {
-        context.extent() = _usableFeatureExtent;
-        CropFilter crop2(CropFilter::METHOD_CROP_TO_EXTENT);
-        context = crop2.push(workingSet, context);
+        // First Crop the feature set to the working extent.
+        // Note: There is an obscure edge case that can happen is a feature's centroid
+        // falls exactly on the crop extent boundary. In that case the feature can
+        // show up in more than one tile. It's rare and not trivial to mitigate so for now
+        // we have decided to do nothing. :)
+        CropFilter crop(
+            _options.layout().isSet() && _options.layout()->cropFeatures() == true ?
+            CropFilter::METHOD_CROP_TO_EXTENT : CropFilter::METHOD_CENTROID);
+
+        context = crop.push(workingSet, context);
+
+        // next, if the usable extent is less than the full extent (i.e. we had to clamp the feature
+        // extent to fit on the map), calculate the extent of the features in this tile and
+        // crop to the map extent if necessary. (Note, if cropFeatures was set to true, this is
+        // already done)
+        if (_featureExtentClamped && _options.layout().isSet() && _options.layout()->cropFeatures() == false)
+        {
+            context.extent() = _usableFeatureExtent;
+            CropFilter crop2(CropFilter::METHOD_CROP_TO_EXTENT);
+            context = crop2.push(workingSet, context);
+        }
     }
 
     // finally, compile the features into a node.
@@ -2061,6 +1886,9 @@ FeatureModelGraph::createStyleGroup(const Style&          style,
 
     FilterContext context(_session.get(), featureProfile, GeoExtent(featureProfile->getSRS(), cellBounds), index);
 
+    //if (!query.tileKey()->is(14, 2847, 6583))
+    //    return {};
+
     // query the feature source:
     osg::ref_ptr<FeatureCursor> cursor = _session->getFeatureSource()->createFeatureCursor(
         query,
@@ -2098,6 +1926,7 @@ FeatureModelGraph::applyRenderSymbology(const Style& style, osg::Node* node)
             DepthOffsetAdapter doa;
             doa.setGraph(node);
             doa.setDepthOffsetOptions(*render->depthOffset());
+            doa.recalculate();
         }
 
         if (render->renderBin().isSet())
@@ -2213,33 +2042,6 @@ FeatureModelGraph::redraw()
         node = buildTile(defaultLevel, GeoExtent::INVALID, 0, _session->getDBOptions());
     }
 
-#if 0
-    float minRange = -FLT_MAX;
-    if (_minRange.isSet())
-        minRange = osg::maximum(minRange, _minRange.get());
-
-    if (_options.layout().isSet() && _options.layout()->minRange().isSet())
-        minRange = osg::maximum(minRange, *_options.layout()->minRange());
-
-    float maxRange = FLT_MAX;
-    if (_maxRange.isSet())
-        maxRange = osg::minimum(maxRange, _maxRange.get());
-
-    if (_options.layout().isSet() && _options.layout()->maxRange().isSet())
-        maxRange = osg::minimum(maxRange, *_options.layout()->maxRange());
-
-    //If they've specified a min/max range, setup an LOD
-    if (minRange != -FLT_MAX || maxRange != FLT_MAX)
-    {
-        OE_INFO << LC << "Elevation LOD set to " << minRange << " => " << maxRange << std::endl;
-
-        // todo: revisit this, make sure this is still right.
-        ElevationLOD *lod = new ElevationLOD(_session->getMapSRS(), minRange, maxRange);
-        lod->addChild(node);
-        node = lod;
-    }
-#endif
-
     // If we want fading, install fading.
     if (_options.fading().isSet())
     {
@@ -2256,7 +2058,7 @@ FeatureModelGraph::redraw()
     runPreMergeOperations(node.get());
 
     addChild(node);
-    
+
     runPostMergeOperations(node.get());
 }
 

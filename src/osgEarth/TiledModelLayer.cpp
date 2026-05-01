@@ -22,34 +22,14 @@
 #include "Chonk"
 #include "Registry"
 #include "ShaderGenerator"
+#include "Style"
+#include "NetworkMonitor"
 #include <osg/BlendFunc>
 
 using namespace osgEarth;
 
-namespace
-{
-    class TiledModelLayerPager : public SimplePager
-    {
-    public:
-        TiledModelLayerPager(const Map* map, TiledModelLayer* layer) :
-            SimplePager(map, layer->getProfile()),
-            _layer(layer)
-        {
-        }
-
-        virtual osg::ref_ptr<osg::Node> createNode(const TileKey& key, ProgressCallback* progress) override
-        {
-            return _layer->createTile(key, progress);
-        }
-
-        osg::observer_ptr< TiledModelLayer > _layer;
-    };
-}
-
 void TiledModelLayer::Options::fromConfig(const Config& conf)
 {
-    additive().setDefault(false);
-    rangeFactor().setDefault(6.0);
     conf.get("additive", additive());
     conf.get("range_factor", rangeFactor());
     conf.get("min_level", minLevel());
@@ -95,9 +75,27 @@ unsigned TiledModelLayer::getMaxLevel() const
 osg::ref_ptr<osg::Node>
 TiledModelLayer::createTile(const TileKey& key, ProgressCallback* progress) const
 {
+    NetworkMonitor::ScopedRequestLayer layerRequest(getName());
+
     osg::ref_ptr<osg::Node> result;
 
-    if (key.getProfile()->isEquivalentTo(getProfile()))
+    // check the L2 cache
+    {
+        ScopedReadLock lock(_localcacheMutex);
+        L2Cache::Record r;
+        if (_localcache.get(key, r))
+        {
+            OE_DEBUG << "L2 hit(" << key.str() << ")" << std::endl;
+            return r.value();
+        }
+    }
+
+    // only create one at a time per key
+    ScopedGate<TileKey> sentry(_gate, key);
+
+    //OE_INFO << "createTile(" << key.str() << ")" << std::endl;
+
+    if (key.getProfile()->isHorizEquivalentTo(getProfile()))
     {
         result = createTileImplementation(key, progress);
     }
@@ -135,34 +133,65 @@ TiledModelLayer::createTile(const TileKey& key, ProgressCallback* progress) cons
 
     if (result.valid())
     {
-        if (_textures.valid())
+        if (_textures.valid()) // nvgl
         {
-            auto xform = findTopMostNodeOfType<osg::MatrixTransform>(result.get());
-
-            osg::ref_ptr<ChonkDrawable> drawable = new ChonkDrawable();
-
-            if (xform)
-            {
-                for (unsigned i = 0; i < xform->getNumChildren(); ++i)
+            // for each StyleGroup that isn't under another StyleGroup:
+            forEachUnnestedNodeOfType<StyleGroup>(result, [&](StyleGroup* styleGroup)
                 {
-                    drawable->add(xform->getChild(i), _chonkFactory);
-                }
-                xform->removeChildren(0, xform->getNumChildren());
-                xform->addChild(drawable);
-                result = xform;
-            }
-            else
-            {
-                if (drawable->add(result.get(), _chonkFactory))
-                {
-                    result = drawable;
-                }
-            }
+                    osg::ref_ptr<osg::Node> output;
+                    osg::Group* xformGroup = nullptr;
+
+                    // for each MT that's not under another MT:
+                    forEachUnnestedNodeOfType<osg::MatrixTransform>(styleGroup, [&](auto* xform)
+                        {
+                            osg::ref_ptr<ChonkDrawable> drawable = new ChonkDrawable();
+
+                            for (unsigned i = 0; i < xform->getNumChildren(); ++i)
+                            {
+                                drawable->add(xform->getChild(i), _chonkFactory);
+                            }
+                            xform->removeChildren(0, xform->getNumChildren());
+                            xform->addChild(drawable);
+
+                            if (!xformGroup)
+                                xformGroup = new osg::Group();
+
+                            xformGroup->addChild(xform);
+                        });
+
+                    if (xformGroup != nullptr)
+                    {
+                        output = xformGroup;
+                    }
+                    else
+                    {
+                        osg::ref_ptr<ChonkDrawable> drawable = new ChonkDrawable();
+                        drawable->add(styleGroup, _chonkFactory);
+                        output = drawable;
+                    }
+
+                    if (output.valid())
+                    {
+                        styleGroup->removeChildren(0, styleGroup->getNumChildren());
+                        styleGroup->addChild(output);
+                    }
+
+                    // Note: don't use "auto" here, gcc does not like it -gw
+                    RenderSymbol* render = styleGroup->style.get<RenderSymbol>();
+                    if (render)
+                        render->applyTo(styleGroup);
+                });
         }
         else
         {
             osgEarth::Registry::shaderGenerator().run(result.get(), _statesetCache);
         }
+    }
+
+    if (result.valid())
+    {
+        ScopedWriteLock lock(_localcacheMutex);
+        _localcache.insert(key, result);
     }
 
     return result;
@@ -217,14 +246,18 @@ TiledModelLayer::removedFromMap(const Map* map)
 
     if (_root.valid())
     {
-        osg::ref_ptr<TiledModelLayerPager> node = findTopMostNodeOfType<TiledModelLayerPager>(_root.get());
-        if (node.valid()) node->setDone();
+        osg::ref_ptr<SimplePager> node = findTopMostNodeOfType<SimplePager>(_root.get());
+        if (node.valid())
+            node->setDone();
+
         _root->removeChildren(0, _root->getNumChildren());
     }
 }
 
 void TiledModelLayer::dirty()
 {
+    super::dirty();
+
     _graphDirty = true;
 
     // create the scene graph
@@ -250,20 +283,51 @@ void TiledModelLayer::init()
     getOrCreateStateSet()->setRenderingHint(osg::StateSet::TRANSPARENT_BIN);
 }
 
+Status TiledModelLayer::closeImplementation()
+{
+    {
+        ScopedWriteLock lock(_localcacheMutex);
+        _localcache.clear();
+    }
+
+    _root->removeChildren(0, _root->getNumChildren());
+    return Status::NoError;
+}
+
 void TiledModelLayer::create()
 {
     if (_map.valid() && _graphDirty)
     {
         _root->removeChildren(0, _root->getNumChildren());
 
-        TiledModelLayerPager* pager = new TiledModelLayerPager(_map.get(), this);
+        OE_SOFT_ASSERT_AND_RETURN(getProfile(), void());
+
+        auto pager = new SimplePager(_map.get(), getProfile());
+
+        pager->setCreateNodeFunction([layer_weak{ osg::observer_ptr<TiledModelLayer>(this) }](const TileKey& key, ProgressCallback* progress)
+            {
+                osg::ref_ptr<TiledModelLayer> layer;
+                if (!layer_weak.lock(layer))
+                    return osg::ref_ptr<osg::Node>();
+
+                auto output = layer->createTile(key, progress);
+
+                return output;
+            });
+
         pager->setAdditive(this->getAdditive());
         pager->setRangeFactor(this->getRangeFactor());
         pager->setMinLevel(this->getMinLevel());
         pager->setMaxLevel(this->getMaxLevel());
         pager->build();
-        // TODO:  NVGL
+
         _root->addChild(pager);
         _graphDirty = false;
     }
 }   
+
+osg::ref_ptr<const Map>
+TiledModelLayer::getMap() const
+{
+    return _map.get();
+}

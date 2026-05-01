@@ -105,14 +105,12 @@ MeasureToolHandler::rebuild()
 
     // offset to mitigate Z fighting
     RenderSymbol* render = _feature->style().mutable_value().getOrCreate<RenderSymbol>();
-    render->depthOffset().mutable_value().enabled() = true;
     render->depthOffset().mutable_value().automatic() = true;
 
     // define a style for the line
     LineSymbol* ls = _feature->style().mutable_value().getOrCreate<LineSymbol>();
     ls->stroke().mutable_value().color() = Color::Yellow;
-    ls->stroke().mutable_value().width() = 2.0f;
-    ls->stroke().mutable_value().widthUnits() = Units::PIXELS;
+    ls->stroke().mutable_value().width() = Distance(2.0f, Units::PIXELS);
     ls->tessellation() = 150;
 
     _featureNode = new FeatureNode( _feature.get() );

@@ -129,10 +129,11 @@ PolygonizeLinesOperator::PolygonizeLinesOperator(
 
 osg::Geometry*
 PolygonizeLinesOperator::operator()(
-    osg::Vec3Array*  verts, 
-    osg::Vec3Array*  normals,
-    Callback*        callback,
-    bool             twosided) const
+    osg::Vec3Array* verts, 
+    osg::Vec3Array* normals,
+    float width,
+    Callback* callback,
+    bool twosided) const
 {
     // number of verts on the original line.
     unsigned lineSize = verts->size();
@@ -143,7 +144,6 @@ PolygonizeLinesOperator::operator()(
 
     const Stroke& stroke = _line->stroke().get();
 
-    float width            = Distance(stroke.width().get(), stroke.widthUnits().get()).as(Units::METERS);
     float halfWidth        = 0.5f * width;
     float maxRoundingAngle = asin( stroke.roundingRatio().get() );
     float minPixelSize     = stroke.minPixels().getOrUse( 0.0f );
@@ -325,17 +325,17 @@ PolygonizeLinesOperator::operator()(
                     {
                         osg::Vec3 nextBufVert = seg.second + bufVec;
 
-                        OE_DEBUG 
-                            << "\n"
-                            << "point " << i << " : \n"
-                            << "seg f: " << seg.first.x() << ", " << seg.first.y() << "\n"
-                            << "seg s: " << seg.second.x() << ", " << seg.second.y() << "\n"
-                            << "pnt 1: " << prevBufVert.x() << ", " << prevBufVert.y() << "\n"
-                            << "ray 1: " << prevDir.x() << ", " << prevDir.y() << "\n"
-                            << "pnt 2: " << nextBufVert.x() << ", " << nextBufVert.y() << "\n"
-                            << "ray 2: " << -dir.x() << ", " << -dir.y() << "\n"
-                            << "bufvec: " << bufVec.x() << ", " << bufVec.y() << "\n"
-                            << "\n";
+                        //OE_DEBUG 
+                        //    << "\n"
+                        //    << "point " << i << " : \n"
+                        //    << "seg f: " << seg.first.x() << ", " << seg.first.y() << "\n"
+                        //    << "seg s: " << seg.second.x() << ", " << seg.second.y() << "\n"
+                        //    << "pnt 1: " << prevBufVert.x() << ", " << prevBufVert.y() << "\n"
+                        //    << "ray 1: " << prevDir.x() << ", " << prevDir.y() << "\n"
+                        //    << "pnt 2: " << nextBufVert.x() << ", " << nextBufVert.y() << "\n"
+                        //    << "ray 2: " << -dir.x() << ", " << -dir.y() << "\n"
+                        //    << "bufvec: " << bufVec.x() << ", " << bufVec.y() << "\n"
+                        //    << "\n";
 
                         // find the 2D intersection of these two vectors. Check for the 
                         // special case of colinearity.
@@ -642,6 +642,13 @@ PolygonizeLinesFilter::push(FeatureList& input, FilterContext& cx)
     {
         Feature* f = i->get();
 
+        Distance lineWidth(1, Units::METERS);
+        if (line && line->stroke().isSet() && line->stroke()->width().isSet())
+        {
+            lineWidth = line->stroke()->width()->eval(f, cx);
+            //lineWidth = f->eval(line->stroke()->width().value(), &cx);
+        }
+
         // iterate over all the feature's geometry parts. We will treat
         // them as lines strings.
         GeometryIterator parts( f->getGeometry(), false );
@@ -660,7 +667,7 @@ PolygonizeLinesFilter::push(FeatureList& input, FilterContext& cx)
             transformAndLocalize( part->asVector(), featureSRS, verts, normals, mapSRS, _world2local, makeECEF );
 
             // turn the lines into polygons.
-            osg::Geometry* geom = polygonize( verts, normals );
+            osg::Geometry* geom = polygonize(verts, normals, lineWidth.as(Units::METERS));
 
             // install.
             geode->addDrawable( geom );

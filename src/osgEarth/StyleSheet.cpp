@@ -35,19 +35,18 @@ StyleSheet::Options::getConfig() const
     Config conf = Layer::Options::getConfig();
 
     conf.remove("selector");
-    for (StyleSelectors::const_iterator i = selectors().begin();
-        i != selectors().end();
-        ++i)
+    for(auto& selector_pair : selectors())
     {
-        conf.add("selector", i->second.getConfig());
+        if (selector_pair.first != "__oe_auto") // do not save the auto-gen one
+        {
+            conf.add("selector", selector_pair.second.getConfig());
+        }
     }
 
     conf.remove("style");
-    for (StyleMap::const_iterator i = styles().begin();
-        i != styles().end();
-        ++i)
+    for(auto& style_entry : styles())
     {
-        conf.add("style", i->second.getConfig());
+        conf.add("style", style_entry.second.getConfig());
     }
 
     conf.remove("library");
@@ -67,15 +66,30 @@ StyleSheet::Options::getConfig() const
         Config scriptConf("script");
 
         if (!_script->name.empty())
+        {
             scriptConf.set("name", _script->name);
+        }
         if (!_script->language.empty())
+        {
             scriptConf.set("language", _script->language);
+        }
         if (_script->uri.isSet())
+        {
             scriptConf.set("url", _script->uri->base());
-        //if (!_script->profile.empty())
-        //    scriptConf.set("profile", _script->profile);
+        }
         else if (!_script->code.empty())
-            scriptConf.setValue(_script->code);
+        {
+            auto code = _script->code;
+
+            // remove the auto-gen code
+            auto pos = code.find("// __oe_auto__");
+            if (pos != std::string::npos)
+            {
+                code = code.substr(0, pos);
+            }
+
+            scriptConf.setValue(code);
+        }
 
         conf.add(scriptConf);
     }
@@ -100,7 +114,7 @@ StyleSheet::Options::fromConfig(const Config& conf)
 
         _libraries[resLib->getName()] = resLib;
     }
-
+    
     // read in any scripts
     _script = NULL;
     const Config& scriptConf = conf.child("script");
@@ -112,7 +126,7 @@ StyleSheet::Options::fromConfig(const Config& conf)
         if (scriptConf.hasValue("url"))
         {
             _script->uri = URI(scriptConf.value("url"), conf.referrer());
-            OE_INFO << LC << "Loading script from \"" << _script->uri->full() << std::endl;
+            OE_DEBUG << LC << "Loading script from \"" << _script->uri->full() << "\"" << std::endl;
             _script->code = _script->uri->getString();
         }
         else
@@ -125,9 +139,6 @@ StyleSheet::Options::fromConfig(const Config& conf)
 
         std::string lang = scriptConf.value("language");
         _script->language = lang.empty() ? "javascript" : lang;
-
-        //std::string profile = scriptConf.value("profile");
-        //_script->profile = profile;
     }
 
     // read any style class definitions. either "class" or "selector" is allowed
@@ -149,7 +160,12 @@ StyleSheet::Options::fromConfig(const Config& conf)
     {
         const Config& styleConf = *i;
 
-        if (styleConf.value("type") == "text/css")
+        // if there is a non-empty "text" value, assume it is CSS.
+        bool has_css = 
+            (styleConf.value("type") == "text/css") ||
+            (trim(styleConf.value()).empty() == false);
+
+        if (has_css)
         {
             // for CSS data, there may be multiple styles in one CSS block. So
             // parse them all out and add them to the stylesheet.
@@ -172,7 +188,6 @@ StyleSheet::Options::fromConfig(const Config& conf)
             {
                 Config blockConf(styleConf);
                 blockConf.setValue(*i);
-                //OE_INFO << LC << "Style block = " << blockConf.toJSON() << std::endl;
                 Style style(blockConf, &styles());
                 _styles[style.getName()] = style;
             }
@@ -182,6 +197,53 @@ StyleSheet::Options::fromConfig(const Config& conf)
             Style style(styleConf);
             _styles[style.getName()] = style;
         }
+    }
+
+    // finally, parse each style and see if it contains a "select" symbol. 
+    // if so, automatically add a selector and a script to support each one.
+    StyleSelector* auto_selector = nullptr;
+    std::stringstream auto_script;
+
+    for (auto& style_entry : _styles)
+    {
+        auto& style = style_entry.second;
+        auto* selector_symbol = style.get<SelectorSymbol>();
+        if (selector_symbol)
+        {
+            if (!auto_selector)
+            {
+                auto_selector = new StyleSelector();
+                auto_selector->name() = "__oe_auto";
+                auto_selector->styleExpression() = StringExpression("__oe_select_style()");
+                _selectors[auto_selector->name().get()] = *auto_selector;
+
+                auto_script << "// __oe_auto__\n";
+                auto_script << "function __oe_select_style() {\n";
+                auto_script << "    var combo = '';\n";
+            }
+
+            auto_script << "    if (" << selector_symbol->predicate().get() << ") combo = combo + '" << style.getName() << ",';\n";
+        }
+    }
+
+    if (auto_selector)
+    {
+        auto_script << "    if (combo.length > 0) return combo.substring(0, combo.length-1);\n";
+        auto_script << "    return 'default';\n}\n";
+        auto new_code = auto_script.str();
+
+        if (!_script)
+        {
+            _script = new ScriptDef();
+            _script->language = "javascript";
+            _script->code = new_code;
+        }
+        else
+        {
+            _script->code = _script->code + "\n\n" + new_code;
+        }
+
+        //OE_INFO << LC << "Generated script:\n" << new_code << std::endl;
     }
 }
 
@@ -258,6 +320,21 @@ StyleSheet::getStyle( const std::string& name, bool fallBackOnDefault ) const
     }
     else {
         return 0L;
+    }
+}
+
+std::pair<const Style*, int>
+StyleSheet::getStyleAndIndex(const std::string& name) const
+{
+    StyleMap::const_iterator i = options().styles().find(name);
+    if (i != options().styles().end())
+    {
+        int index = std::distance(options().styles().begin(), i);
+        return { &i->second, index };
+    }
+    else
+    {
+        return { nullptr, -1 };
     }
 }
 

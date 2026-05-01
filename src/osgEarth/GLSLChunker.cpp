@@ -23,11 +23,12 @@
 using namespace osgEarth;
 using namespace osgEarth::Util;
 
+#define LC "[GLSLChunker] "
 
 void
 GLSLChunker::dump(const std::string& msg, const Chunks& chunks) const
 {
-    OE_INFO << msg << "\n";
+    OE_DEBUG << LC << msg << std::endl;
     for (Chunks::const_iterator i = chunks.begin(); i != chunks.end(); ++i)
     {
         std::string type = 
@@ -37,7 +38,7 @@ GLSLChunker::dump(const std::string& msg, const Chunks& chunks) const
             i->type == Chunk::TYPE_FUNCTION ? "FUNCTION" :
             "????????";
 
-        OE_INFO << "   " << type << ": " << i->text << std::endl;
+        OE_DEBUG << "   " << type << ": " << i->text << std::endl;
     }
 }
 
@@ -209,8 +210,12 @@ namespace
     std::string indent(const std::string& input)
     {
         std::ostringstream out;
-        std::vector<std::string> lines;
-        StringTokenizer(input, lines, "\n", "", true);
+
+        auto lines = StringTokenizer()
+            .delim("\n")
+            .keepEmpties(true)
+            .tokenize(input);
+
         std::string prefix;
         for (auto& line : lines)
         {

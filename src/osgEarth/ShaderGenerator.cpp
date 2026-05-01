@@ -44,6 +44,7 @@
 #include <osgDB/FileUtils>
 #include <osgText/Text>
 #include <osgSim/LightPointNode>
+#include <osgUtil/SmoothingVisitor>
 
 #include <osg/ValueObject>
 
@@ -125,7 +126,7 @@ namespace
 
             std::string stripped = osgDB::getNameLessExtension(filename);
 
-            OE_INFO << LC << "Loading " << stripped << " from PLOD/Proxy and generating shaders." << std::endl;
+            //OE_DEBUG << LC << "Loading " << stripped << " from PLOD/Proxy and generating shaders." << std::endl;
 
             osgEarth::ReadResult result = URI(stripped).readNode(options);
             if ( result.succeeded() && result.getNode() != 0L )
@@ -315,7 +316,7 @@ namespace
 //...........................................................................
 
 ShaderGenerator::GenBuffers::GenBuffers() :
-_stateSet(0L)
+    _stateSet(0L)
 {
     //nop
 }
@@ -328,14 +329,13 @@ ShaderGenerator::ShaderGenerator()
     setTraversalMode( TRAVERSE_ALL_CHILDREN );
     setNodeMaskOverride( ~0 );
     _state = new StateEx();
-    _active = true;
-    _duplicateSharedSubgraphs = false;
 }
 
 ShaderGenerator::ShaderGenerator(const ShaderGenerator& rhs, const osg::CopyOp& copy) :
-osg::NodeVisitor         (rhs, copy),
-_active                  (rhs._active),
-_duplicateSharedSubgraphs(rhs._duplicateSharedSubgraphs)
+    osg::NodeVisitor(rhs, copy),
+    _active(rhs._active),
+    _duplicateSharedSubgraphs(rhs._duplicateSharedSubgraphs),
+    _removeUnsupportedFFPAttributes(rhs._removeUnsupportedFFPAttributes)
 {
     _state = new StateEx();
 }
@@ -423,7 +423,7 @@ ShaderGenerator::run(osg::StateSet* ss)
 
     _state->pushStateSet(ss);
     osg::ref_ptr<osg::StateSet> replacement;
-    processGeometry(ss, replacement);
+    processGeometry(nullptr, ss, replacement);
     _state->popStateSet();
     return replacement;
 }
@@ -454,40 +454,40 @@ ShaderGenerator::duplicateSharedNode(osg::Node& node)
 void
 ShaderGenerator::apply(osg::Node& node)
 {
-    if ( !_active )
+    if (!_active)
         return;
 
-    if ( ignore(&node) )
+    if (ignore(&node))
         return;
 
-    if ( _duplicateSharedSubgraphs )
+    if (_duplicateSharedSubgraphs)
         duplicateSharedNode(node);
 
-    applyNonCoreNodeIfNecessary( node );
+    applyNonCoreNodeIfNecessary(node);
 
     osg::ref_ptr<osg::StateSet> stateset = node.getStateSet();
-    if ( stateset.valid() )
+    if (stateset.valid())
     {
-        _state->pushStateSet( stateset.get() );
+        disableUnsupportedAttributes(stateset.get());
+        _state->pushStateSet(stateset.get());
     }
 
     traverse(node);
 
-    if ( stateset.valid() )
+    if (stateset.valid())
     {
-        disableUnsupportedAttributes(stateset.get());
         _state->popStateSet();
     }
 }
 
 void
-ShaderGenerator::apply( osg::Group& group )
+ShaderGenerator::apply(osg::Group& group)
 {
-    apply( static_cast<osg::Node&>(group) );
+    apply(static_cast<osg::Node&>(group));
 }
 
 void
-ShaderGenerator::apply( osg::Geode& node )
+ShaderGenerator::apply(osg::Geode& node)
 {
     if ( !_active )
         return;
@@ -501,6 +501,7 @@ ShaderGenerator::apply( osg::Geode& node )
     osg::ref_ptr<osg::StateSet> stateset = node.getStateSet();
     if ( stateset.valid() )
     {
+        disableUnsupportedAttributes(stateset.get());
         _state->pushStateSet( stateset.get() );
     }
 
@@ -531,7 +532,7 @@ ShaderGenerator::apply( osg::Geode& node )
         if (numInheritingGeometry == numDrawables )
         {
             osg::ref_ptr<osg::StateSet> replacement;
-            if ( processGeometry(stateset.get(), replacement) )
+            if ( processGeometry(nullptr, stateset.get(), replacement) )
             {
                 node.setStateSet(replacement.get() );
                 traverseDrawables = false;
@@ -560,13 +561,12 @@ ShaderGenerator::apply( osg::Geode& node )
 
     if ( stateset.valid() )
     {
-        disableUnsupportedAttributes(stateset.get());
         _state->popStateSet();
     }
 }
 
 void
-ShaderGenerator::apply( osg::Drawable& node )
+ShaderGenerator::apply(osg::Drawable& node)
 {
     if ( !_active )
         return;
@@ -593,6 +593,7 @@ ShaderGenerator::apply( osg::Drawable* drawable )
         osg::ref_ptr<osg::StateSet> ss = drawable->getStateSet();
         if ( ss.valid() )
         {
+            disableUnsupportedAttributes(ss.get());
             _state->pushStateSet(ss.get());
         }
 
@@ -611,9 +612,16 @@ ShaderGenerator::apply( osg::Drawable* drawable )
             {
                 geom->setUseVertexBufferObjects(true);
                 geom->setUseDisplayList(false);
+                
+                // generate normals if none exist
+                if (geom->getNormalArray() == nullptr)
+                {
+                    osgUtil::SmoothingVisitor normal_gen;
+                    geom->accept(normal_gen);
+                }
             }
 
-            if ( processGeometry(ss.get(), replacement) )
+            if ( processGeometry(geom, ss.get(), replacement) )
             {
                 drawable->setStateSet(replacement.get());
             }
@@ -621,7 +629,6 @@ ShaderGenerator::apply( osg::Drawable* drawable )
 
         if ( ss.valid() )
         {
-            disableUnsupportedAttributes(ss.get());
             _state->popStateSet();
         }
     }
@@ -714,17 +721,18 @@ ShaderGenerator::apply(osgSim::LightPointNode& node)
         osg::ref_ptr<osg::PointSprite> sprite = new osg::PointSprite();
         stateset->setTextureAttributeAndModes(0, sprite.get());
 
+        disableUnsupportedAttributes(stateset.get());
+
         _state->pushStateSet( stateset.get() );
 
         osg::ref_ptr<osg::StateSet> replacement;
-        if ( processGeometry(stateset.get(), replacement) )
+        if ( processGeometry(nullptr, stateset.get(), replacement) )
         {
             // remove the temporary sprite.
             replacement->removeTextureAttribute(0, sprite.get());
             node.setStateSet(replacement.get() );
         }
 
-        disableUnsupportedAttributes(stateset.get());
         _state->popStateSet();
     }
 }
@@ -762,8 +770,10 @@ ShaderGenerator::processText(const osg::StateSet* ss, osg::ref_ptr<osg::StateSet
 
 
 bool
-ShaderGenerator::processGeometry(const osg::StateSet*         original,
-                                 osg::ref_ptr<osg::StateSet>& replacement)
+ShaderGenerator::processGeometry(
+    const osg::Geometry* geom,
+    const osg::StateSet* original,
+    osg::ref_ptr<osg::StateSet>& replacement)
 {
     // do nothing if there's no GLSL support
     if ( !_active )
@@ -812,6 +822,14 @@ ShaderGenerator::processGeometry(const osg::StateSet*         original,
     GenBuffers buf;
     buf._stateSet = newStateSet.get();
 
+    // if the geometry doesn't have normals, we need to set a default value.
+    if (geom && geom->getNormalArray() == nullptr)
+    {
+        buf._modelHead << INDENT << "vec3 vp_Normal;\n";
+        buf._modelBody << INDENT << "vp_Normal = vec3(0,0,1);\n";
+        needNewStateSet = true;
+    }
+
     // if the stateset changes any texture attributes, we need a new virtual program:
     if (current->getTextureAttributeList().size() > 0)
     {
@@ -844,12 +862,15 @@ ShaderGenerator::processGeometry(const osg::StateSet*         original,
             }
 
 #ifndef OSG_GL_FIXED_FUNCTION_AVAILABLE
-            if (texgen)
-                newStateSet->removeTextureAttribute(unit, texgen);
-            if (texenv)
-                newStateSet->removeTextureAttribute(unit, texenv);
-            if (texmat)
-                newStateSet->removeTextureAttribute(unit, texmat);
+            if (_removeUnsupportedFFPAttributes)
+            {
+                if (texgen)
+                    newStateSet->removeTextureAttribute(unit, texgen);
+                if (texenv)
+                    newStateSet->removeTextureAttribute(unit, texenv);
+                if (texmat)
+                    newStateSet->removeTextureAttribute(unit, texmat);
+            }
 #endif
         }
     }
@@ -1167,6 +1188,7 @@ ShaderGenerator::apply(osg::Texture2D* tex, int unit, GenBuffers& buf)
     buf._fragHead << "uniform sampler2D " SAMPLER << unit << ";\n";
     buf._fragBody << INDENT "texel = texture(" SAMPLER << unit << ", " TEX_COORD << unit << ".xy);\n";
     buf._stateSet->getOrCreateUniform( Stringify() << SAMPLER << unit, osg::Uniform::SAMPLER_2D )->set( unit );
+    buf._stateSet->removeTextureMode(unit, GL_TEXTURE_2D);
 
     return true;
 }
@@ -1264,4 +1286,6 @@ ShaderGenerator::disableUnsupportedAttributes(osg::StateSet* stateset)
 {
     if (!stateset)
         return;
+
+    stateset->removeAttribute(osg::StateAttribute::SHADEMODEL);
 }

@@ -49,20 +49,18 @@ namespace
 //-----------------------------------------------------------------------------
 
 
-FeatureSourceIndexOptions::FeatureSourceIndexOptions(const Config& conf) :
-_enabled      ( false ),
-_embedFeatures( false )
+FeatureSourceIndexOptions::FeatureSourceIndexOptions(const Config& conf)
 {
-    conf.get( "enabled",        _enabled );
-    conf.get( "embed_features", _embedFeatures );
+    conf.get("enabled", _enabled);
+    conf.get("embed_features", _embedFeatures);
 }
 
 Config
 FeatureSourceIndexOptions::getConfig() const
 {
     Config conf("feature_indexing");
-    conf.set( "enabled",        _enabled );
-    conf.set( "embed_features", _embedFeatures );
+    conf.set("enabled", _enabled);
+    conf.set("embed_features", _embedFeatures);
     return conf;
 }
 
@@ -98,11 +96,6 @@ FeatureSourceIndexNode::~FeatureSourceIndexNode()
         std::set<FeatureID> fidsToRemove;
         fidsToRemove.insert(KeyIter<FID_to_RefIDPair>(_fids.begin()), KeyIter<FID_to_RefIDPair>(_fids.end()));
         _fids.clear();
-
-        std::string message = Stringify() << "Removing " << fidsToRemove.size();
-        OE_PROFILING_ZONE_TEXT(message.c_str());
-
-        OE_DEBUG << LC << "Removing " << fidsToRemove.size() << " fids\n";
         _index->removeFIDs( fidsToRemove.begin(), fidsToRemove.end() );
     }
 }
@@ -150,12 +143,6 @@ FeatureSourceIndexNode::getAllFIDs(std::vector<FeatureID>& output) const
     {
         output.push_back(iter.first);
     }
-    //KeyIter<FID_to_RefIDPair> start( _fids.begin() );
-    //KeyIter<FID_to_RefIDPair> end  ( _fids.end() );
-    //for(KeyIter<FID_to_RefIDPair> i = start; i != end; ++i )
-    //{
-    //    output.push_back( *i );
-    //}
 
     return true;
 }
@@ -187,7 +174,6 @@ namespace
             FeatureSourceIndexNode* indexNode = dynamic_cast<FeatureSourceIndexNode*>(&node);
             if (indexNode)
             {
-                //OE_INFO << LC << "Reconstituting index...\n";
                 indexNode->setIndex(_index);
                 indexNode->reIndex(_oldToNew);
             }
@@ -498,8 +484,6 @@ FeatureSourceIndex::tagNode(osg::Node* node, Feature* feature)
             _embeddedFeatures[fid] = feature;
         }
     }
-
-    OE_DEBUG << LC << "Tagging feature ID = " << fid << " => " << oid << " (" << feature->getString("name") << ")\n";
 
     return p;
 }

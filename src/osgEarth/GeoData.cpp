@@ -355,7 +355,10 @@ GeoPoint::transformResolution(const Distance& resolution, const UnitsType& outUn
             refLatDegrees);
     }
 
-    double d = resolution.asDistance(outUnits, refLatDegrees);
+    double d = getSRS()->transformDistance(resolution, outUnits, refLatDegrees);
+
+    //double d = resolution.asDistance(outUnits, refLatDegrees);
+
     return Distance(d, outUnits);
 }
 
@@ -444,7 +447,7 @@ GeoPoint::createLocalToWorld( osg::Matrixd& out_l2w ) const
     bool result = _srs->createLocalToWorld( _p, out_l2w );
     if ( _altMode != ALTMODE_ABSOLUTE )
     {
-        OE_DEBUG << LC << "ILLEGAL: called GeoPoint::createLocalToWorld with AltitudeMode = RELATIVE_TO_TERRAIN" << std::endl;
+        //OE_DEBUG << LC << "ILLEGAL: called GeoPoint::createLocalToWorld with AltitudeMode = RELATIVE_TO_TERRAIN" << std::endl;
         return false;
     }
     return result;
@@ -457,7 +460,7 @@ GeoPoint::createWorldToLocal( osg::Matrixd& out_w2l ) const
     bool result = _srs->createWorldToLocal( _p, out_w2l );
     if ( _altMode != ALTMODE_ABSOLUTE )
     {
-        OE_DEBUG << LC << "ILLEGAL: called GeoPoint::createWorldToLocal with AltitudeMode = RELATIVE_TO_TERRAIN" << std::endl;
+        //OE_DEBUG << LC << "ILLEGAL: called GeoPoint::createWorldToLocal with AltitudeMode = RELATIVE_TO_TERRAIN" << std::endl;
         return false;
     }
     return result;
@@ -532,13 +535,10 @@ GeoPoint::interpolate(const GeoPoint& rhs, double t) const
 
     else // geographic
     {
-        osg::Vec3d output;
-
-        getSRS()->getEllipsoid().geodesicInterpolate(
+        osg::Vec3d output = getSRS()->getEllipsoid().geodesicInterpolate(
             vec3d(),
             to.vec3d(),
-            t,
-            output);
+            t);
 
         result.set(
             getSRS(),
@@ -980,7 +980,7 @@ GeoExtent::operator != ( const GeoExtent& rhs ) const
 bool
 GeoExtent::crossesAntimeridian() const
 {
-    return _srs.valid() && _srs->isGeographic() && east() < west(); //west()+width() > 180.0;
+    return _srs.valid() && _srs->isGeographic() && east() < west();
 }
 
 bool
@@ -1583,22 +1583,12 @@ GeoExtent::normalizeX(double x) const
 {
     if (is_valid(x) && _srs.valid() && _srs->isGeographic())
     {
-        if (fabs(x) <= 180.0)
-        {
-            return x;
-        }
-
-        if (x < 0.0 || x >= 360.0)
-        {
-            x = fmod(x, 360.0);
-            if (x < 0.0)
-                x += 360.0;
-        }
-        
-        if (x > 180.0)
-        {
+        // put x in the range [-180..180)
+        x = fmod(x, 360.0);
+        if (x < -180.0)
+            x += 360.0;
+        else if (x >= 180.0)
             x -= 360.0;
-        }
     }
     return x;
 }
@@ -1669,6 +1659,9 @@ osg::BoundingSphered
 GeoExtent::createWorldBoundingSphere(double minElev, double maxElev) const
 {
     osg::BoundingSphered bs;
+
+    if (!getSRS())
+        return bs;
 
     if (getSRS()->isProjected())
     {

@@ -223,6 +223,26 @@ SpatialReference::SpatialReference(const Key& key) :
         _setup.vert = key.vertLower;
     }
 
+    else if (
+        key.horizLower == "moon" ||
+        key.horizLower == "esri104903")
+    {
+        _setup.name = "Moon";
+        _setup.type = INIT_PROJ;
+        _setup.horiz = "+proj=longlat +R=1737400 +no_defs +units=m +type=crs";
+        _setup.vert = key.vertLower;
+    }
+
+    else if (
+        key.horizLower.find("+proj=longlat") == 0 &&
+        key.horizLower.find("+R=1737400") != std::string::npos)
+    {
+        _setup.name = "Moon";
+        _setup.type = INIT_PROJ;
+        _setup.horiz = key.horiz;
+        _setup.vert = key.vertLower;
+    }
+
     // custom srs for the unified cube
     else if (
         key.horizLower == "unified-cube" )
@@ -1213,6 +1233,82 @@ SpatialReference::transformUnits(const Distance&         distance,
     }
 }
 
+double
+SpatialReference::transformDistance(const Distance& input, const UnitsType& outputUnits, double referenceLatitude) const
+{
+    auto inputUnits = input.getUnits();
+
+    if (inputUnits.isAngle() && outputUnits.isLinear())
+    {
+        auto meters = getEllipsoid().longitudinalDegreesToMeters(input.as(Units::DEGREES), referenceLatitude);
+        return Units::convert(Units::METERS, outputUnits, meters);
+    }
+    else if (inputUnits.isLinear() && outputUnits.isAngle())
+    {
+        auto degrees = getEllipsoid().metersToLongitudinalDegrees(input.as(Units::METERS), referenceLatitude);
+        return Units::convert(Units::DEGREES, outputUnits, degrees);
+    }
+    else
+    {
+        return input.as(outputUnits);
+    }
+}
+
+bool
+SpatialReference::clampExtentToLegalBounds(
+    const SpatialReference* target_srs,
+    double& in_out_xmin,
+    double& in_out_ymin,
+    double& in_out_xmax,
+    double& in_out_ymax) const
+{
+    OE_SOFT_ASSERT_AND_RETURN(target_srs, false);
+
+    Bounds rhs_bounds;
+    if (!target_srs->getBounds(rhs_bounds) || !rhs_bounds.valid())
+        return false;
+
+
+    Bounds rhs_bounds_geo = rhs_bounds;
+    if (!target_srs->isGeographic())
+    {
+        auto* geo_srs = target_srs->getGeographicSRS();
+        target_srs->transform(rhs_bounds._min, geo_srs, rhs_bounds_geo._max);
+        target_srs->transform(rhs_bounds._max, geo_srs, rhs_bounds_geo._max);
+    }
+
+    Bounds lhs_bounds(in_out_xmin, in_out_ymin, 0.0, in_out_xmax, in_out_ymax, 0.0);
+    Bounds lhs_bounds_geo = lhs_bounds;
+    if (!this->isGeographic())
+    {
+        auto* geo_srs = this->getGeographicSRS();
+        target_srs->transform(lhs_bounds._min, geo_srs, lhs_bounds_geo._max);
+        target_srs->transform(lhs_bounds._max, geo_srs, lhs_bounds_geo._max);
+    }
+    
+    lhs_bounds_geo = intersectionOf(lhs_bounds_geo, rhs_bounds_geo);
+
+    if (!this->isGeographic())
+    {
+        auto* geo_srs = this->getGeographicSRS();
+        geo_srs->transform(lhs_bounds_geo._min, this, lhs_bounds._min);
+        geo_srs->transform(lhs_bounds_geo._max, this, lhs_bounds._max);
+        in_out_xmin = lhs_bounds.xMin();
+        in_out_ymin = lhs_bounds.yMin();
+        in_out_xmax = lhs_bounds.xMax();
+        in_out_ymax = lhs_bounds.yMax();
+    }
+    else
+    {
+        in_out_xmin = lhs_bounds_geo.xMin();
+        in_out_ymin = lhs_bounds_geo.yMin();
+        in_out_xmax = lhs_bounds_geo.xMax();
+        in_out_ymax = lhs_bounds_geo.yMax();
+    }
+
+    return true;
+}
+
 bool
 SpatialReference::transformExtentToMBR(
     const SpatialReference* to_srs,
@@ -1225,6 +1321,10 @@ SpatialReference::transformExtentToMBR(
 
     if (!valid())
         return false;
+
+    // Same SRS? no work to do.
+    if (isHorizEquivalentTo(to_srs))
+        return true;
 
     // Transform all points and take the maximum bounding rectangle the resulting points
     std::vector<osg::Vec3d> v;
@@ -1240,6 +1340,9 @@ SpatialReference::transformExtentToMBR(
 
     double height = in_out_ymax - in_out_ymin;
     double width = in_out_xmax - in_out_xmin;
+    unsigned int numSamples = 5;
+
+    v.reserve(5 + numSamples * 4);
 
     // first point is a centroid. This we will use to make sure none of the corner points
     // wraps around if the target SRS is geographic.
@@ -1257,9 +1360,8 @@ SpatialReference::transformExtentToMBR(
     //Hotline Oblique Mercator to WGS84
    
     //Sample the edges
-    unsigned int numSamples = 5;    
-    double dWidth  = width / (numSamples - 1 );
-    double dHeight = height / (numSamples - 1 );
+    double dWidth  = width / (numSamples - 1);
+    double dHeight = height / (numSamples - 1);
     
     //Left edge
     for (unsigned int i = 0; i < numSamples; i++)
@@ -1309,11 +1411,6 @@ SpatialReference::transformExtentToMBR(
             in_out_xmax = std::max( v[i].x(), in_out_xmax );
             in_out_ymax = std::max( v[i].y(), in_out_ymax );
         }
-
-        // obe?
-        //bool swapXValues = (isGeographic() && in_out_xmin > in_out_xmax);
-        //if ( swapXValues )
-        //    std::swap( in_out_xmin, in_out_xmax );
 
         return true;
     }
@@ -1488,7 +1585,20 @@ SpatialReference::init()
     if ( _name == "unnamed" || _name == "unknown" || _name.empty() )
     {
         StringTable proj4_tok;
-        StringTokenizer(_proj4, proj4_tok);
+
+        auto kvps = StringTokenizer()
+            .whitespaceDelims()
+            .standardQuotes()
+            .tokenize(_proj4);
+
+        StringTokenizer tokenize_kvp;
+        tokenize_kvp.delim("=");
+        for (auto& kvp : kvps) {
+            auto tokens = tokenize_kvp(kvp);
+            if (tokens.size() == 2)
+                proj4_tok[tokens[0]] = tokens[1];
+        }
+
         if (proj4_tok["+proj"] == "utm")
         {
             _name = Stringify() << "UTM " << proj4_tok["+zone"];
@@ -1561,6 +1671,10 @@ SpatialReference::init()
                 _bounds.set(166000, 0, 0.0, 834000, 9330000, 0.0);
             else
                 _bounds.set(166000, 1116915, 0.0, 834000, 10000000, 0.0);
+        }
+        else if (projection_lc == "equirectangular") // plate carre
+        {
+            _bounds.set(MERC_MINX, MERC_MINY * 0.5, 0.0, MERC_MAXX, MERC_MAXY * 0.5, 0.0);
         }
     }
 }

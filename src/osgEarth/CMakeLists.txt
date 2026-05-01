@@ -2,8 +2,6 @@
 
 if(OSGEARTH_BUILD_SHARED_LIBS)
     add_definitions(-DOSGEARTH_LIBRARY)
-else()
-    add_definitions(-DOSGEARTH_LIBRARY_STATIC)
 endif()
 
 # Dependencies ...................................................
@@ -16,9 +14,12 @@ find_package(SQLite3 REQUIRED)
 # optional
 find_package(geos QUIET)
 find_package(blend2d QUIET)
-find_package(blosc QUIET)
 find_package(spdlog QUIET)
 find_package(meshoptimizer QUIET)
+
+if(OSGEARTH_BUILD_SHARED_LIBS)
+    find_package(blosc QUIET)
+endif()
 
 if(OSGEARTH_BUILD_ZIP_PLUGIN)
     find_package(LibZip QUIET)
@@ -111,6 +112,7 @@ SET(TARGET_H
     AttributesFilter
     AutoClipPlaneHandler
     AutoScaleCallback
+    AzureMaps
     BboxDrawable
     BBoxSymbol
     BillboardResource
@@ -148,7 +150,6 @@ SET(TARGET_H
     Config
     Containers
     ContourMap
-    Controls
     ConvertTypeFilter
     Coverage
     CoverageLayer
@@ -200,6 +201,7 @@ SET(TARGET_H
     FeatureSDFLayer
     FeatureSource
     FeatureSourceIndexNode
+    FeatureStyleSorter
     FileUtils
     Fill
     Filter
@@ -252,7 +254,7 @@ SET(TARGET_H
     InstanceSymbol
     IntersectionPicker
     IOTypes
-    JoinPointsLinesFilter
+    JoinLines
     JsonUtils
     LabelNode
     LandCover
@@ -459,33 +461,11 @@ SET(TARGET_H
     ${OSGEARTH_VERSION_HEADER}
 )
 
-if(OSGEARTH_HAVE_IMGUI)
-    set(TARGET_H_IMGUI
-        ImGui/ImGui
-        ImGui/ImGuiApp
-        ImGui/AnnotationsGUI
-        ImGui/ContentBrowserGUI
-        ImGui/LayersGUI
-        ImGui/NetworkMonitorGUI
-        ImGui/NotifyGUI
-        ImGui/PickerGUI
-        ImGui/SceneGraphGUI
-        ImGui/SearchGUI
-        ImGui/TextureInspectorGUI
-        ImGui/ViewpointsGUI
-        ImGui/SystemGUI
-        ImGui/EnvironmentGUI
-        ImGui/ShaderGUI
-        ImGui/TerrainGUI
-        ImGui/CameraGUI
-        ImGui/RenderingGUI
-        )
-endif()
-
 if(OSGEARTH_BUILD_LEGACY_CONTROLS_API)
     list(APPEND TARGET_H
         ActivityMonitorTool
-        MouseCoordsTool)
+        MouseCoordsTool
+        Controls)
 endif()
 
 set(TARGET_SRC
@@ -501,7 +481,8 @@ set(TARGET_SRC
     ArcGISTilePackage.cpp
     AtlasBuilder.cpp
     AttributesFilter.cpp
-    AutoClipPlaneHandler.cpp
+    AutoClipPlaneHandler.cpp    
+    AzureMaps.cpp
     BboxDrawable.cpp
     BBoxSymbol.cpp
     BillboardResource.cpp
@@ -537,7 +518,6 @@ set(TARGET_SRC
     CompressedArray.cpp
     Config.cpp
     ContourMap.cpp
-    Controls.cpp
     ConvertTypeFilter.cpp
     CoverageLayer.cpp
     CoverageSymbol.cpp
@@ -585,6 +565,7 @@ set(TARGET_SRC
     FeatureSDFLayer.cpp
     FeatureSource.cpp
     FeatureSourceIndexNode.cpp
+    FeatureStyleSorter.cpp
     FileGDBFeatureSource.cpp
     FileUtils.cpp
     Fill.cpp
@@ -636,7 +617,7 @@ set(TARGET_SRC
     InstanceSymbol.cpp
     IntersectionPicker.cpp
     IOTypes.cpp
-    JoinPointsLinesFilter.cpp
+    JoinLines.cpp
     JsonUtils.cpp
     LabelNode.cpp
     LandCover.cpp
@@ -823,7 +804,8 @@ set(TARGET_SRC
 if(OSGEARTH_BUILD_LEGACY_CONTROLS_API)
     list(APPEND TARGET_SRC
         ActivityMonitorTool.cpp
-        MouseCoordsTool.cpp)
+        MouseCoordsTool.cpp
+        Controls.cpp)
 endif()
 
 
@@ -855,7 +837,6 @@ set(OSGEARTH_BUILDCONFIG_HEADER "${OSGEARTH_BUILDTIME_INCLUDE_DIR}/osgEarth/Buil
 add_osgearth_library(
     TARGET ${LIB_NAME}
     PUBLIC_HEADERS ${TARGET_H} ${OSGEARTH_VERSION_HEADER} ${OSGEARTH_BUILDCONFIG_HEADER}
-    IMGUI_HEADERS ${TARGET_H_IMGUI}
     SOURCES ${TARGET_SRC}
     SHADERS ${TARGET_GLSL}
     TEMPLATES ${TARGET_IN} )
@@ -897,14 +878,15 @@ if(blosc_FOUND)
     message(STATUS "Found blosc")
     set(OSGEARTH_HAVE_BLOSC ON)
     include_directories(${BLOSC_INCLUDE_DIR})
-    target_link_libraries(${LIB_NAME} PRIVATE blosc_shared)
+    string (TOLOWER ${OSGEARTH_DYNAMIC_OR_STATIC} shared_or_static)
+    target_link_libraries(${LIB_NAME} PRIVATE blosc_${shared_or_static})
 endif()
 
 # GEOS support?
 if(geos_FOUND)
     message(STATUS "Found geos")
     set(OSGEARTH_HAVE_GEOS ON)
-    include_directories(${GEOS_INCLUDE_DIR})
+    #include_directories(${GEOS_INCLUDE_DIR})
     target_link_libraries(${LIB_NAME} PRIVATE GEOS::geos_c)
 endif()
 
@@ -912,7 +894,7 @@ endif()
 if(blend2d_FOUND)
     message(STATUS "Found blend2d")
     set(OSGEARTH_HAVE_BLEND2D ON)
-    include_directories(${BLEND2D_INCLUDES})
+    #include_directories(${BLEND2D_INCLUDES})
     target_link_libraries(${LIB_NAME} PRIVATE blend2d::blend2d)
 endif()
 

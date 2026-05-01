@@ -473,13 +473,12 @@ CompositeImageLayer::createImageImplementation(const TileKey& key, ProgressCallb
                         else // FUNCTION_MORE
                             compare = [](float a, float b) { return a > b; };
                             
-                        ImageUtils::ImageIterator iter(readOne);
-                        iter.forEachPixel([&]()
+                        readOne.forEachPixel([&](auto& iter)
                             {
-                                readOne(pixelOne, iter.s(), iter.t());
-                                readTwo(pixelTwo, iter.s(), iter.t());
+                                readOne(pixelOne, iter);
+                                readTwo(pixelTwo, iter);
                                 if (compare(pixelTwo.r(), pixelOne.r()))
-                                    writeOne(pixelTwo, iter.s(), iter.t());
+                                    writeOne(pixelTwo, iter);
                             });
                     }
                 }

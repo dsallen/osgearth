@@ -72,6 +72,11 @@ BBoxSymbol::mergeConfig( const Config& conf )
 void
 BBoxSymbol::parseSLD(const Config& c, Style& style)
 {
+    if (match(c.key(), "library")) {
+        if (!c.value().empty())
+            style.getOrCreate<SkinSymbol>()->library() = Strings::unquote(c.value());
+    }
+    else
     if ( match(c.key(), "text-bbox-fill") ) {
        style.getOrCreate<BBoxSymbol>()->fill().mutable_value().color() = Color(c.value());
     }
@@ -79,7 +84,7 @@ BBoxSymbol::parseSLD(const Config& c, Style& style)
         style.getOrCreate<BBoxSymbol>()->border().mutable_value().color() = Color(c.value());
     }
     else if ( match(c.key(), "text-bbox-border-width") ) {
-        style.getOrCreate<BBoxSymbol>()->border().mutable_value().width() = as<float>( c.value(), 1.0f );
+        style.getOrCreate<BBoxSymbol>()->border().mutable_value().width() = Distance(c.value(), Units::PIXELS);
     }
     else if ( match(c.key(), "text-bbox-margin") ) {
         style.getOrCreate<BBoxSymbol>()->margin() = as<float>(c.value(), 3.0f);

@@ -156,9 +156,9 @@ main(int argc, char** argv)
 
         Style geomStyle;
         geomStyle.getOrCreate<LineSymbol>()->stroke().mutable_value().color() = Color::Cyan;
-        geomStyle.getOrCreate<LineSymbol>()->stroke().mutable_value().width() = 5.0f;
+        geomStyle.getOrCreate<LineSymbol>()->stroke().mutable_value().width() = Distance(5.0f, Units::PIXELS);
         geomStyle.getOrCreate<LineSymbol>()->tessellationSize() = Distance(75000, Units::METERS);
-        geomStyle.getOrCreate<RenderSymbol>()->depthOffset().mutable_value().enabled() = true;
+        geomStyle.getOrCreate<RenderSymbol>()->depthOffset();
 
         FeatureNode* fnode = new FeatureNode(feature, geomStyle);
 
@@ -186,9 +186,9 @@ main(int argc, char** argv)
         feature->geoInterp() = GEOINTERP_RHUMB_LINE;
 
         geomStyle.getOrCreate<LineSymbol>()->stroke().mutable_value().color() = Color::Lime;
-        geomStyle.getOrCreate<LineSymbol>()->stroke().mutable_value().width() = 3.0f;
+        geomStyle.getOrCreate<LineSymbol>()->stroke().mutable_value().width() = Distance(3.0f, Units::PIXELS);
         geomStyle.getOrCreate<LineSymbol>()->tessellationSize() = Distance(75000, Units::METERS);
-        geomStyle.getOrCreate<RenderSymbol>()->depthOffset().mutable_value().enabled() = true;
+        geomStyle.getOrCreate<RenderSymbol>()->depthOffset();
 
         FeatureNode* gnode = new FeatureNode(feature, geomStyle);
         annoGroup->addChild( gnode );
@@ -217,7 +217,7 @@ main(int argc, char** argv)
         auto* line = pathStyle.getOrCreate<LineSymbol>();
         auto& stroke = line->stroke().mutable_value();
         stroke.color() = Color::White;
-        stroke.width() = 1.0f;
+        stroke.width() = Distance(1.0f, Units::PIXELS);
         stroke.smooth() = true;
         line->tessellationSize() = Distance(75000, Units::METERS);
         pathStyle.getOrCreate<PointSymbol>()->size() = 8;
@@ -225,7 +225,7 @@ main(int argc, char** argv)
         pathStyle.getOrCreate<PointSymbol>()->smooth() = true;
         pathStyle.getOrCreate<AltitudeSymbol>()->clamping() = AltitudeSymbol::CLAMP_TO_TERRAIN;
         pathStyle.getOrCreate<AltitudeSymbol>()->technique() = AltitudeSymbol::TECHNIQUE_GPU;
-        pathStyle.getOrCreate<RenderSymbol>()->depthOffset().mutable_value().enabled() = true;
+        pathStyle.getOrCreate<RenderSymbol>()->depthOffset();
 
         //OE_INFO << "Path extent = " << pathFeature->getExtent().toString() << std::endl;
 

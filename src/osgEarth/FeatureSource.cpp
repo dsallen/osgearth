@@ -37,6 +37,8 @@ FeatureSource::Options::getConfig() const
     conf.set("fid_attribute", fidAttribute());
     conf.set("rewind_polygons", rewindPolygons());
     conf.set("vdatum", vdatum());
+    conf.set("buffer_width", bufferWidth(), bufferWidthAsPercentage());
+    conf.set("auto_fid", autoFID());
 
     if (!filters().empty())
     {
@@ -59,6 +61,8 @@ FeatureSource::Options::fromConfig(const Config& conf)
     conf.get("fid_attribute", fidAttribute());
     conf.get("rewind_polygons", rewindPolygons());
     conf.get("vdatum", vdatum());
+    conf.get("buffer_width", bufferWidth(), bufferWidthAsPercentage());
+    conf.get("auto_fid", autoFID());
 
     for(auto& filterConf : conf.child("filters").children())
         filters().push_back(filterConf);
@@ -130,7 +134,7 @@ FeatureSource::setFeatureProfile(const FeatureProfile* fp)
 
         _featureProfile = new_fp;
 
-        OE_INFO << LC << "Set vdatum = " << options().vdatum().get() << std::endl;
+        OE_DEBUG << LC << "Set vdatum = " << options().vdatum().get() << std::endl;
     }
 
     return _featureProfile.get();
@@ -264,7 +268,7 @@ FeatureSource::dirty()
 
 osg::ref_ptr<FeatureCursor>
 FeatureSource::createFeatureCursor(
-    const Query& query,
+    const Query& in_query,
     const FeatureFilterChain& post_filters,
     FilterContext* context,
     ProgressCallback* progress) const
@@ -277,10 +281,45 @@ FeatureSource::createFeatureCursor(
     if (context)
         temp_cx = *context;
 
-
     if (temp_cx.profile() == nullptr)
         temp_cx.setProfile(getFeatureProfile());
-    
+
+    // make a copy so we can override the buffer if necessary
+    Query query = in_query;
+
+    // clear a buffer that's set to zero units.
+    if (query.buffer()->getValue() == 0.0)
+        query.buffer().clear();
+
+    // No buffer? Check the options on the layer itself:
+    if (!query.buffer().isSet())
+    {
+        if (options().bufferWidth().isSet())
+        {
+            query.buffer() = options().bufferWidth().value();
+        }
+        else if (options().bufferWidthAsPercentage().isSet())
+        {
+            if (query.bounds().isSet())
+            {
+                double w = width(query.bounds().value());
+                double h = height(query.bounds().value());
+                double buffer = sqrt(w*h) * options().bufferWidthAsPercentage().value();
+                query.buffer() = Distance(buffer, getFeatureProfile()->getSRS()->getUnits());
+            }
+            else if (query.tileKey().isSet())
+            {
+                double w = query.tileKey()->getExtent().width();
+                double h = query.tileKey()->getExtent().height();
+                double buffer = sqrt(w*h) * options().bufferWidthAsPercentage().value();
+                query.buffer() = Distance(buffer, query.tileKey()->getProfile()->getSRS()->getUnits());
+            }
+            else
+            {
+                OE_WARN << LC << "Requested a buffer width as a percentage but no bounds or tilekey was set" << std::endl;
+            }
+        }
+    }
 
     // TileKey path:
     if (query.tileKey().isSet())
@@ -321,6 +360,9 @@ FeatureSource::createFeatureCursor(
                 auto sub_cursor = createFeatureCursorImplementation(Query(sub_key), progress);
                 if (sub_cursor)
                     multi->_cursors.emplace_back(sub_cursor);
+
+                if (progress && progress->isCanceled())
+                    return {};
             }
 
             if (multi->_cursors.empty())
@@ -335,7 +377,7 @@ FeatureSource::createFeatureCursor(
 
     else
     {
-        OE_SOFT_ASSERT(!query.buffer().isSet(), "Buffer not supported for non-tilekey queries; ignoring");
+        //OE_SOFT_ASSERT(!query.buffer().isSet(), "Buffer not supported for non-tilekey queries; ignoring");
 
         if (!temp_cx.extent().isSet() && _featureProfile.valid())
         {
@@ -370,7 +412,21 @@ FeatureSource::createFeatureCursor(
                 for(auto& feature : features)
                 {
                     std::string attr = feature->getString(options().fidAttribute().get());
+                    for (auto& c : attr)
+                        if (!isdigit(c))
+                            c = ' ';
                     feature->setFID(as<FeatureID>(attr, 0));
+                }
+                result = new FeatureListCursor(std::move(features));
+            }
+            else if (options().autoFID() == true)
+            {
+                static FeatureID generator = 0;
+                FeatureList features;
+                result->fill(features);
+                for (auto& feature : features)
+                {
+                    feature->setFID(generator++);
                 }
                 result = new FeatureListCursor(std::move(features));
             }
@@ -436,7 +492,11 @@ FeatureSource::getKeys(const TileKey& key, const Distance& buffer, std::unordere
             else
             {
                 GeoExtent extent = key.getExtent();
-                double d = buffer.asDistance(extent.getSRS()->getUnits(), 0.5*(extent.yMin() + extent.yMax()));
+                double d = extent.getSRS()->transformDistance(
+                    buffer,
+                    extent.getSRS()->getUnits(),
+                    0.5*(extent.yMin() + extent.yMax()));
+                //double d = buffer.asDistance(extent.getSRS()->getUnits(), 0.5*(extent.yMin() + extent.yMax()));
                 extent.expand(d, d);
                 unsigned lod = profile->getEquivalentLOD(key.getProfile(), key.getLOD());
                 profile->getIntersectingTiles(extent, lod, intersectingKeys);

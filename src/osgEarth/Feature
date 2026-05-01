@@ -121,7 +121,7 @@ namespace osgEarth
 
     using AttributeTable = vector_map<std::string, AttributeValue, ci_string_less>;
 
-    using FeatureID = long long;
+    using FeatureID = std::int64_t; // long long;
 
     using FeatureSchema = std::map<std::string, AttributeType>;
 
@@ -143,7 +143,7 @@ namespace osgEarth
         Feature(const Feature& rhs);
 
         //! Contruct a feature (move)
-        Feature(Feature&& rhs);
+        //Feature(Feature&& rhs);
 
     public:
 
@@ -225,6 +225,24 @@ namespace osgEarth
         bool getBool( const std::string& name, bool defaultValue =false ) const;
         const std::vector<double>* getDoubleArray( const std::string& name ) const;
 
+        //! Index of the names attribute (for fast access)
+        int indexOf(const std::string& name) const {
+            return _attrs.indexOf(name);
+        }
+
+        inline std::string getString(int index) const {
+            return _attrs.at(index).getString();
+        }
+        inline double getDouble(int index) const {
+            return _attrs.at(index).getDouble();
+        }
+        inline long long getInt(int index) const {
+            return _attrs.at(index).getInt();
+        }
+        inline bool getBool(int index) const {
+            return _attrs.at(index).getBool();
+        }        
+
         /**
          * Gets whether the attribute is set, meaning it is non-NULL
          */
@@ -239,12 +257,20 @@ namespace osgEarth
         const optional<GeoInterpolation>& geoInterp() const { return _geoInterp; }
 
         /** populates the variables of an expression with attribute values and evals the expression. */
+        double eval(const NumericExpression& expr, const FilterContext* context) const;
         double eval(NumericExpression& expr, const FilterContext* context) const;
+
+        double eval(const NumericExpression& expr, Session* session) const;
         double eval(NumericExpression& expr, Session* session) const;
 
         /** populates the variables of an expression with attribute values and evals the expression. */
+        std::string eval(const StringExpression& expr, const FilterContext* context) const;
         const std::string& eval(StringExpression& expr, const FilterContext* context) const;
+
+        std::string eval(const StringExpression& expr, Session* session) const;
         const std::string& eval(StringExpression& expr, Session* session) const;
+
+        //std::string eval(const std::string& expr, const FilterContext* context) const;
 
     public:
         /** Gets a GeoJSON representation of this Feature */
@@ -262,7 +288,7 @@ namespace osgEarth
         /**
          * Splits this feature into multiple features if it is a geodetic feature and cross the date line.
          */
-        void splitAcrossDateLine(FeatureList& splitFeatures);
+        void splitAcrossAntimeridian();
 
     protected:
 

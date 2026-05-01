@@ -207,28 +207,30 @@ Feature::Feature(Geometry* geom, const SpatialReference* srs, const Style& style
     dirty();
 }
 
-Feature::Feature(const Feature& rhs) : //, const osg::CopyOp& copyOp) :
+Feature::Feature(const Feature& rhs) :
     _fid(rhs._fid),
     _attrs(rhs._attrs),
     _style(rhs._style),
     _geoInterp(rhs._geoInterp),
     _srs(rhs._srs.get())
 {
+    OE_SOFT_ASSERT(rhs._geom.valid());
+
     if (rhs._geom.valid())
         _geom = rhs._geom->clone();
 
     dirty();
 }
 
-Feature::Feature(Feature&& rhs) // : osg::Object(rhs)
-{
-    _fid = rhs._fid;
-    _attrs = std::move(rhs._attrs);
-    _style = std::move(rhs._style);
-    _geoInterp = std::move(rhs._geoInterp);
-    _geom = std::move(rhs._geom);
-    _cachedExtent = std::move(rhs._cachedExtent);
-}
+//Feature::Feature(Feature&& rhs) // : osg::Object(rhs)
+//{
+//    _fid = std::move(rhs._fid);
+//    _attrs = std::move(rhs._attrs);
+//    _style = std::move(rhs._style);
+//    _geoInterp = std::move(rhs._geoInterp);
+//    _geom = std::move(rhs._geom);
+//    _cachedExtent = std::move(rhs._cachedExtent);
+//}
 
 Feature::~Feature()
 {
@@ -267,6 +269,7 @@ Feature::setSRS( const SpatialReference* srs )
 void
 Feature::setGeometry( Geometry* geom )
 {
+    OE_HARD_ASSERT(geom != nullptr);
     _geom = geom;
     dirty();
 }
@@ -418,6 +421,13 @@ Feature::isSet( const std::string& name) const
 }
 
 double
+Feature::eval(const NumericExpression& expr, FilterContext const* context) const
+{
+    NumericExpression temp(expr);
+    return eval(temp, context);
+}
+
+double
 Feature::eval( NumericExpression& expr, FilterContext const* context ) const
 {
     const NumericExpression::Variables& vars = expr.variables();
@@ -448,6 +458,13 @@ Feature::eval( NumericExpression& expr, FilterContext const* context ) const
     }
 
     return expr.eval();
+}
+
+double
+Feature::eval(const NumericExpression& expr, Session* session) const
+{
+    NumericExpression temp(expr);
+    return eval(temp, session);
 }
 
 double
@@ -486,6 +503,13 @@ Feature::eval(NumericExpression& expr, Session* session) const
     return expr.eval();
 }
 
+std::string
+Feature::eval(const StringExpression& expr, FilterContext const* context) const
+{
+    StringExpression temp(expr);
+    return eval(temp, context);
+}
+
 const std::string&
 Feature::eval(StringExpression& expr, FilterContext const* context) const
 {
@@ -511,7 +535,7 @@ Feature::eval(StringExpression& expr, FilterContext const* context) const
                 {
                     // Couldn't execute it as code, just take it as a string literal.
                     val = i->first;
-                    OE_DEBUG << LC << "Feature Script error on '" << expr.expr() << "': " << result.message() << std::endl;
+                    //OE_DEBUG << LC << "Feature Script error on '" << expr.expr() << "': " << result.message() << std::endl;
                 }
             }
         }
@@ -520,6 +544,13 @@ Feature::eval(StringExpression& expr, FilterContext const* context) const
     }
 
     return expr.eval();
+}
+
+std::string
+Feature::eval(const StringExpression& expr, Session* session) const
+{
+    StringExpression temp(expr);
+    return eval(temp, session);
 }
 
 const std::string&
@@ -547,7 +578,7 @@ Feature::eval(StringExpression& expr, Session* session) const
                 {
                     // Couldn't execute it as code, just take it as a string literal.
                     val = i->first;
-                    OE_DEBUG << LC << "Feature Script error on '" << expr.expr() << "': " << result.message() << std::endl;
+                    //OE_DEBUG << LC << "Feature Script error on '" << expr.expr() << "': " << result.message() << std::endl;
                 }
             }
         }
@@ -783,46 +814,32 @@ void Feature::transform( const SpatialReference* srs )
     setSRS( srs );
 }
 
-void Feature::splitAcrossDateLine(FeatureList& splitFeatures)
+void
+Feature::splitAcrossAntimeridian()
 {
-    splitFeatures.clear();
-
-     // If the feature is geodetic, try to split it across the dateline.
-    if (getSRS() && getSRS()->isGeodetic())
+    // If the feature is geodetic, try to split it across the dateline.
+    if (getSRS() && getSRS()->isGeodetic() && getGeometry())
     {
-        GeoExtent extent(getSRS(), getGeometry()->getBounds());
-        // Only split the feature if it crosses the antimerdian
-        if (extent.crossesAntimeridian())
-        {
-            // This tries to split features across the dateline in three different zones.  -540 to -180, -180 to 180, and 180 to 540.
-            double minLon = -540;
-            for (int i = 0; i < 3; i++)
-            {
-                double offset = minLon - -180.0;
-                double maxLon = minLon + 360.0;
-                Bounds bounds(minLon, -90.0, 0.0, maxLon, 90.0, 0.0);
-                osg::ref_ptr< Geometry > croppedGeometry;
-                if (getGeometry()->crop(bounds, croppedGeometry))
-                {
-                    // If the geometry was cropped, offset the x coordinate so it's within normal longitude ranges.
-                    for (int j = 0; j < croppedGeometry->size(); j++)
-                    {
-                        (*croppedGeometry)[j].x() -= offset;
-                    }
-                    osg::ref_ptr< Feature > croppedFeature = new Feature(*this);
-                    // Make sure the feature is wound correctly.
-                    croppedGeometry->rewind(osgEarth::Geometry::ORIENTATION_CCW);
-                    croppedFeature->setGeometry(croppedGeometry.get());
-                    splitFeatures.push_back(croppedFeature);
-                }
-                minLon += 360.0;
-            }
-        }
+        auto* split_geom = getGeometry()->splitAcrossAntimeridian();
+        setGeometry(split_geom);
     }
+}
 
-    // If we didn't actually split the feature then just add the original
-    if (splitFeatures.empty())
-    {
-        splitFeatures.push_back( this );
-    }
+
+
+std::string
+osgEarth::evaluateExpression(const std::string& expr, const Feature* feature, const FilterContext& context)
+{
+    OE_SOFT_ASSERT_AND_RETURN(feature, {});
+    OE_SOFT_ASSERT_AND_RETURN(context.getSession(), {});
+
+    auto* engine = context.getSession()->getScriptEngine();
+    OE_SOFT_ASSERT_AND_RETURN(engine, {});
+
+    auto result = engine->run(expr, feature, &context);
+    if (result.success())
+        return result.asString();
+
+    OE_WARN << LC << "Feature Script error on '" << expr << "': " << result.message() << std::endl;
+    return {};
 }

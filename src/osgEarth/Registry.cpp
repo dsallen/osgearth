@@ -68,15 +68,26 @@ std::int64_t osgEarth::g_startupPrivateBytes =
 
 namespace
 {
+    bool verbose_gdal_errors = false;
+
     void CPL_STDCALL myCPLErrorHandler(CPLErr errClass, int errNum, const char* msg)
     {
-        if (errClass == CE_Warning)
+        static std::once_flag flag;
+        std::call_once(flag, [&]() {
+            verbose_gdal_errors = ::getenv("OSGEARTH_VERBOSE_GDAL_ERRORS") != nullptr;
+        });
+
+        if (errClass == CE_Fatal)
         {
-            OE_INFO << "GDAL warning: " << msg << " (error " << errNum << ")" << std::endl;
+            OE_WARN << "GDAL fatal error: " << msg << " (error " << errNum << ")" << std::endl;
         }
-        else if (errClass > CE_Warning)
+        else if (verbose_gdal_errors)
         {
-            OE_WARN << "GDAL failure: " << msg << " (error " << errNum << ")" << std::endl;
+            OE_NOTICE << "GDAL says: " << msg << " (error " << errNum << ")" << std::endl;
+        }
+        else
+        {
+            OE_DEBUG << "GDAL says: " << msg << " (error " << errNum << ")" << std::endl;
         }
     }
 }
@@ -108,7 +119,8 @@ Registry::Registry() :
 #endif
 
     // Redirect GDAL/OGR console errors to our own handler
-    CPLPushErrorHandler(myCPLErrorHandler);
+    //CPLPushErrorHandler(myCPLErrorHandler);
+    CPLSetErrorHandler(myCPLErrorHandler);
 
     // Set the GDAL shared block cache size. This defaults to 5% of
     // available memory which is too high.
@@ -136,7 +148,9 @@ Registry::Registry() :
 
     // warn if GDAL_DATA is not set
     if (::getenv("GDAL_DATA") == NULL)
+    {
         OE_INFO << LC << "Note: GDAL_DATA environment variable is not set" << std::endl;
+    }
 
     // shader generator used internally by osgEarth. Can be replaced.
     _shaderGen = new ShaderGenerator();
@@ -243,7 +257,7 @@ Registry::Registry() :
 
 Registry::~Registry()
 {
-    OE_DEBUG << LC << "Registry shutting down..." << std::endl;
+    OE_DEBUG << LC << "Registry destructing" << std::endl;
 
     // A heavy hammer, but at this stage, which is usually application
     // shutdown, various osgEarth objects (e.g., VirtualPrograms) are
@@ -251,7 +265,7 @@ Registry::~Registry()
     osgDB::Registry::instance()->clearObjectCache();
 
     // pop the custom error handler
-    CPLPopErrorHandler();
+    //CPLPopErrorHandler();
 
     // Release any GL objects
     release();
@@ -434,7 +448,7 @@ Registry::getDefaultCacheDriverName() const
             if ( value )
             {
                 _cacheDriver = value;
-                OE_DEBUG << LC << "Cache driver set from environment: " << value << std::endl;
+                OE_INFO << LC << "Cache driver set from environment: " << value << std::endl;
             }
         }
     }
@@ -538,7 +552,6 @@ Registry::blacklist(const std::string& filename)
 {
     _blacklist.lock();
     _blacklist.insert(filename);
-    OE_DEBUG << "Blacklist size = " << _blacklist.size() << std::endl;
     _blacklist.unlock();
 }
 
