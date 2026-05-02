@@ -1,21 +1,7 @@
 
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
+/* osgEarth
  * Copyright 2008-2014 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+ * MIT License
  */
 #include "TerrainCuller"
 #include "TileNode"
@@ -153,6 +139,19 @@ TerrainCuller::addDrawCommand(UID uid, const TileRenderModel* model, const Rende
 
             // assign the draw sequence:
             tile._sequence = drawable->_tiles.size();
+
+            // elevation min/max, if we have a 16-bit encoded elevation value:
+            if (bindings[SamplerBinding::ELEVATION].isActive())
+            {
+                auto& elevSampler = model->_sharedSamplers[SamplerBinding::ELEVATION];
+                if (elevSampler._texture &&
+                    elevSampler._texture->getPixelFormat() == GL_RG &&
+                    elevSampler._texture->minValue().isSet() &&
+                    elevSampler._texture->maxValue().isSet())
+                {
+                    tile._elevMinMax.set(elevSampler._texture->minValue().get(), elevSampler._texture->maxValue().get());
+                }
+            }
 
             return &drawable->_tiles.back();
         }

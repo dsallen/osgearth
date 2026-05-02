@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include <osgEarth/HTTPClient>
 #include <osgEarth/Progress>
@@ -29,6 +15,10 @@
 #include <osgDB/ReadFile>
 #include <osgDB/FileNameUtils>
 #include <curl/curl.h>
+
+#ifdef OSGEARTH_HAVE_SUPERLUMINALAPI
+#include <Superluminal/PerformanceAPI.h>
+#endif
 
 // Whether to use WinInet instead of cURL - CMAKE option
 #ifdef OSGEARTH_USE_WININET_FOR_HTTP
@@ -467,9 +457,6 @@ HTTPResponse::setHeadersFromConfig(const Config& conf)
 
 namespace
 {
-    // per-thread client map (must be global scope)
-    static PerThread<HTTPClient>       s_clientPerThread;
-
     static optional<ProxySettings>     s_proxySettings;
 
     static std::string                 s_userAgent = USER_AGENT;
@@ -480,7 +467,7 @@ namespace
 
     // HTTP debugging.
     static bool                        s_HTTP_DEBUG = false;
-    static std::mutex            s_HTTP_DEBUG_mutex;
+    static std::mutex                  s_HTTP_DEBUG_mutex;
     static int                         s_HTTP_DEBUG_request_count;
     static double                      s_HTTP_DEBUG_total_duration;
 
@@ -508,7 +495,8 @@ namespace
             curl_easy_setopt( _curl_handle, CURLOPT_HEADERFUNCTION, StreamObjectHeaderCallback );
             curl_easy_setopt( _curl_handle, CURLOPT_FOLLOWLOCATION, (void*)1 );
             curl_easy_setopt( _curl_handle, CURLOPT_MAXREDIRS, (void*)5 );
-            curl_easy_setopt( _curl_handle, CURLOPT_PROGRESSFUNCTION, &CurlProgressCallback);
+            //curl_easy_setopt( _curl_handle, CURLOPT_PROGRESSFUNCTION, &CurlProgressCallback);
+            curl_easy_setopt( _curl_handle, CURLOPT_XFERINFOFUNCTION, &CurlProgressCallback);
             curl_easy_setopt( _curl_handle, CURLOPT_NOPROGRESS, (void*)0 ); //0=enable.
             curl_easy_setopt( _curl_handle, CURLOPT_FILETIME, true );
 
@@ -1264,9 +1252,9 @@ WinInetHTTPImplementationFactory::create() const
 //........................................................................
 
 #ifdef OSGEARTH_USE_WININET_FOR_HTTP
-HTTPClient::ImplementationFactory* HTTPClient::_implFactory = new WinInetHTTPImplementationFactory();
+    HTTPClient::ImplementationFactory* HTTPClient::_implFactory = new WinInetHTTPImplementationFactory();
 #else
-HTTPClient::ImplementationFactory* HTTPClient::_implFactory = new CURLHTTPImplementationFactory();
+    HTTPClient::ImplementationFactory* HTTPClient::_implFactory = new CURLHTTPImplementationFactory();
 #endif
 
 void
@@ -1284,17 +1272,12 @@ HTTPClient::setImplementationFactory(ImplementationFactory* factory)
 HTTPClient&
 HTTPClient::getClient()
 {
-    return s_clientPerThread.get();
+    static thread_local HTTPClient s_clientPerThread;
+    return s_clientPerThread;
 }
 
-HTTPClient::HTTPClient() :
-_initialized    ( false ),
-_curl_handle    ( 0L ),
-_simResponseCode( -1L ),
-_previousHttpAuthentication(0L),
-_impl(NULL)
+HTTPClient::HTTPClient()
 {
-    //nop
     //do no CURL calls here.
     if (_implFactory)
     {
@@ -1382,6 +1365,7 @@ HTTPClient::initializeImpl()
 
 HTTPClient::~HTTPClient()
 {
+    //nop
 }
 
 void
@@ -1561,6 +1545,11 @@ HTTPClient::doGet(const HTTPRequest&    request,
     OE_PROFILING_ZONE;
     OE_PROFILING_ZONE_TEXT(Stringify() << "url " << request.getURL());
 
+#ifdef OSGEARTH_HAVE_SUPERLUMINALAPI
+    PERFORMANCEAPI_INSTRUMENT_FUNCTION();
+    PERFORMANCEAPI_INSTRUMENT_DATA("url", request.getURL().c_str());
+#endif
+
     initialize();
 
     URI uri(request.getURL());
@@ -1695,30 +1684,32 @@ namespace
     getReader( const std::string& url, const HTTPResponse& response )
     {
         osgDB::ReaderWriter* reader = 0L;
+        std::string ext;
 
-        std::string urlMinusQueryParams = removeQueryParams(url);
-        // try extension first:
-
-        std::string ext = osgDB::getFileExtension(urlMinusQueryParams);
-        if ( !ext.empty() )
+        if (response.getNumParts() > 0)
         {
-            reader = osgDB::Registry::instance()->getReaderWriterForExtension( ext );
+            reader = ImageUtils::getReaderWriterForString(response.getPartAsString(0));
+        }
+
+        if (!reader)
+        {
+            // try extension first:
+            std::string urlMinusQueryParams = removeQueryParams(url);
+            ext = osgDB::getFileExtension(urlMinusQueryParams);
+            if (!ext.empty())
+            {
+                reader = osgDB::Registry::instance()->getReaderWriterForExtension(ext);
+            }
         }
 
         if ( !reader )
         {
-            // try to look up a reader by mime-type first:
+            // try to look up a reader by mime-type:
             const std::string& mimeType = response.getMimeType();
             if ( !mimeType.empty() )
             {
                 reader = osgDB::Registry::instance()->getReaderWriterForMimeType(mimeType);
             }
-        }
-
-        if (!reader && response.getNumParts() > 0)
-        {
-            std::istringstream stream(response.getPartAsString(0));
-            reader = ImageUtils::getReaderWriterForStream(stream);
         }
 
         if ( !reader && s_HTTP_DEBUG )
@@ -1736,6 +1727,11 @@ namespace
             {
                 OE_WARN << LC << "Content:\n" << response.getPartAsString(0) << "\n";
             }
+        }
+
+        if (!reader)
+        {
+            OE_WARN << "Unhappy!" << std::endl;
         }
 
         return reader;

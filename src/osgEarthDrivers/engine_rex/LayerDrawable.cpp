@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
+/* osgEarth
  * Copyright 2008-2014 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+ * MIT License
  */
 #include "LayerDrawable"
 #include "TerrainRenderData"
@@ -239,6 +225,17 @@ LayerDrawableNVGL::refreshRenderState()
                     s._texture->keepImage() = true; // never discard.. we use it elsewhere
                     buf.elevIndex = textures->add(s._texture);
                     COPY_MAT4F(s._matrix, buf.elevMat);
+
+                    if (s._texture->minValue().isSet() && s._texture->maxValue().isSet())
+                    {
+                        buf.elevMin = s._texture->minValue().get();
+                        buf.elevMax = s._texture->maxValue().get();
+                    }
+                    else
+                    {
+                        // If the texture does not have min/max values, use the default.
+                        buf.elevMin = buf.elevMax = 0.0f;
+                    }
                 }
             }
 

@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include <osgEarth/BBoxSymbol>
 #include <osgEarth/Style>
@@ -84,7 +70,7 @@ BBoxSymbol::parseSLD(const Config& c, Style& style)
         style.getOrCreate<BBoxSymbol>()->border().mutable_value().color() = Color(c.value());
     }
     else if ( match(c.key(), "text-bbox-border-width") ) {
-        style.getOrCreate<BBoxSymbol>()->border().mutable_value().width() = Distance(c.value(), Units::PIXELS);
+        style.getOrCreate<BBoxSymbol>()->border()->width() = Distance(c.value(), Units::PIXELS);
     }
     else if ( match(c.key(), "text-bbox-margin") ) {
         style.getOrCreate<BBoxSymbol>()->margin() = as<float>(c.value(), 3.0f);

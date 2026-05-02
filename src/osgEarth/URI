@@ -1,23 +1,8 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
-#ifndef OSGEARTH_URI
-#define OSGEARTH_URI 1
+#pragma once
 
 #include <osgEarth/Common>
 #include <osgEarth/Containers>
@@ -26,11 +11,6 @@
 #include <osg/Node>
 #include <osgDB/Options>
 #include <osgDB/ReaderWriter>
-
-namespace osgUtil
-{
-    class IncrementalCompileOperation;
-}
 
 namespace osgEarth
 {
@@ -389,8 +369,8 @@ namespace osgEarth
      */
     struct /*header-only*/ URIResultCache : public LRUCache<URI, ReadResult>
     {
-        URIResultCache( bool threadsafe =true )
-            : LRUCache<URI,ReadResult>( threadsafe ) { }
+        URIResultCache()
+            : LRUCache<URI,ReadResult>(128u) { }
 
         static URIResultCache* from(const osgDB::Options* options) {
             return options ? const_cast<URIResultCache*>(static_cast<const URIResultCache*>(options->getPluginData("osgEarth::URIResultCache"))) : 0L;
@@ -519,5 +499,3 @@ namespace osgEarth
         return escaped.str();
     }
 }
-
-#endif // OSGEARTH_URI

@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 
 #include <osgEarth/SpatialReference>
@@ -34,7 +20,7 @@ namespace
     std::string
     getOGRAttrValue( void* _handle, const std::string& name, int child_num = 0, bool lowercase =false)
     {
-        const char* val = OSRGetAttrValue( _handle, name.c_str(), child_num );
+        const char* val = OSRGetAttrValue( static_cast<OGRSpatialReferenceH>(_handle), name.c_str(), child_num );
         if ( val )
         {
             return lowercase ? toLower(val) : val;
@@ -103,7 +89,7 @@ SpatialReference::ThreadLocal::~ThreadLocal()
 
     if (_handle)
     {
-        OSRDestroySpatialReference(_handle);
+        OSRDestroySpatialReference(static_cast<OGRSpatialReferenceH>(_handle));
     }
 }
 
@@ -313,7 +299,7 @@ SpatialReference::getLocal() const
 
         if (_setup.srcHandle != nullptr)
         {
-            local._handle = OSRClone(_setup.srcHandle);
+            local._handle = OSRClone(static_cast<OGRSpatialReferenceH>(_setup.srcHandle));
             if (!local._handle)
             {
                 OE_WARN << LC << "Failed to clone an existing handle" << std::endl;
@@ -328,7 +314,7 @@ SpatialReference::getLocal() const
 
             if (_setup.type == INIT_PROJ)
             {
-                error = OSRImportFromProj4(local._handle, _setup.horiz.c_str());
+                error = OSRImportFromProj4(static_cast<OGRSpatialReferenceH>(local._handle), _setup.horiz.c_str());
             }
             else if (_setup.type == INIT_WKT)
             {
@@ -338,7 +324,7 @@ SpatialReference::getLocal() const
                 {
                     strcpy(buf, _setup.horiz.c_str());
 
-                    error = OSRImportFromWkt(local._handle, &buf_ptr);
+                    error = OSRImportFromWkt(static_cast<OGRSpatialReferenceH>(local._handle), &buf_ptr);
 
                     if (error == OGRERR_NONE)
                     {
@@ -354,13 +340,13 @@ SpatialReference::getLocal() const
             }
             else
             {
-                error = OSRSetFromUserInput(local._handle, _setup.horiz.c_str());
+                error = OSRSetFromUserInput(static_cast<OGRSpatialReferenceH>(local._handle), _setup.horiz.c_str());
             }
 
             if (error != OGRERR_NONE)
             {
                 OE_WARN << LC << "Failed to create SRS from \"" << _setup.horiz << "\"" << std::endl;
-                OSRDestroySpatialReference(local._handle);
+                OSRDestroySpatialReference(static_cast<OGRSpatialReferenceH>(local._handle));
                 local._handle = nullptr;
                 _valid = false;
             }
@@ -566,7 +552,7 @@ SpatialReference::_isEquivalentTo( const SpatialReference* rhs, bool considerVDa
     return 
         myHandle &&
         rhsHandle &&
-        OSRIsSame(myHandle, rhsHandle) == TRUE;
+        OSRIsSame(OGRSpatialReferenceH(myHandle), OGRSpatialReferenceH(rhsHandle)) == TRUE;
 }
 
 const SpatialReference*
@@ -586,18 +572,18 @@ SpatialReference::getGeographicSRS() const
         {
             // temporary SRS to build the WKT
             void* temp_handle = OSRNewSpatialReference(NULL);
-            int err = OSRCopyGeogCSFrom(temp_handle, getHandle());
+            int err = OSRCopyGeogCSFrom(static_cast<OGRSpatialReferenceH>(temp_handle), static_cast<OGRSpatialReferenceH>(getHandle()));
             if (err == OGRERR_NONE)
             {
                 char* wktbuf;
-                if (OSRExportToWkt(temp_handle, &wktbuf) == OGRERR_NONE)
+                if (OSRExportToWkt(static_cast<OGRSpatialReferenceH>(temp_handle), &wktbuf) == OGRERR_NONE)
                 {
                     Key key(std::string(wktbuf), _key.vertLower);
                     _geo_srs = new SpatialReference(key);
                     CPLFree(wktbuf);
                 }
             }
-            OSRDestroySpatialReference(temp_handle);
+            OSRDestroySpatialReference(static_cast<OGRSpatialReferenceH>(temp_handle));
         }
     }
 
@@ -618,18 +604,18 @@ SpatialReference::getGeodeticSRS() const
         {
             // temporary SRS to build the WKT
             void* temp_handle = OSRNewSpatialReference(NULL);
-            int err = OSRCopyGeogCSFrom(temp_handle, getHandle());
+            int err = OSRCopyGeogCSFrom(static_cast<OGRSpatialReferenceH>(temp_handle), static_cast<OGRSpatialReferenceH>(getHandle()));
             if (err == OGRERR_NONE)
             {
                 char* wktbuf;
-                if (OSRExportToWkt(temp_handle, &wktbuf) == OGRERR_NONE)
+                if (OSRExportToWkt(static_cast<OGRSpatialReferenceH>(temp_handle), &wktbuf) == OGRERR_NONE)
                 {
                     Key key(std::string(wktbuf), "");
                     _geodetic_srs = new SpatialReference(key);
                     CPLFree(wktbuf);
                 }
             }
-            OSRDestroySpatialReference(temp_handle);
+            OSRDestroySpatialReference(static_cast<OGRSpatialReferenceH>(temp_handle));
         }
     }
 
@@ -650,11 +636,11 @@ SpatialReference::getGeocentricSRS() const
         {
             // temporary SRS to build the WKT
             void* temp_handle = OSRNewSpatialReference(NULL);
-            int err = OSRCopyGeogCSFrom(temp_handle, getHandle());
+            int err = OSRCopyGeogCSFrom(static_cast<OGRSpatialReferenceH>(temp_handle), static_cast<OGRSpatialReferenceH>(getHandle()));
             if (err == OGRERR_NONE)
             {
                 char* wktbuf;
-                if (OSRExportToWkt(temp_handle, &wktbuf) == OGRERR_NONE)
+                if (OSRExportToWkt(static_cast<OGRSpatialReferenceH>(temp_handle), &wktbuf) == OGRERR_NONE)
                 {
                     Key key(std::string(wktbuf), ""); // to vdatum in ECEF
                     _geocentric_srs = new SpatialReference(key);
@@ -662,7 +648,7 @@ SpatialReference::getGeocentricSRS() const
                     CPLFree(wktbuf);
                 }
             }
-            OSRDestroySpatialReference(temp_handle);
+            OSRDestroySpatialReference(static_cast<OGRSpatialReferenceH>(temp_handle));
         }
     }
 
@@ -1000,7 +986,7 @@ SpatialReference::transformXYPointArrays(
     optional<TransformInfo>& xform = local._xformCache[out_srs->getWKT()];
     if (!xform.isSet())
     {
-        xform.mutable_value()._handle = OCTNewCoordinateTransformation(local._handle, out_srs->getHandle());
+        xform.mutable_value()._handle = OCTNewCoordinateTransformation(static_cast<OGRSpatialReferenceH>(local._handle), static_cast<OGRSpatialReferenceH>(out_srs->getHandle()));
 
         if ( xform.mutable_value()._handle == nullptr )
         {
@@ -1027,7 +1013,7 @@ SpatialReference::transformXYPointArrays(
         return false;
     }
 
-    return OCTTransform(xform->_handle, count, x, y, 0L) > 0;
+    return OCTTransform(static_cast<OGRCoordinateTransformationH>(xform->_handle), count, x, y, 0L) > 0;
 }
 
 
@@ -1333,7 +1319,7 @@ SpatialReference::transformExtentToMBR(
     // TODO: rethink this to be more generic.
     if (isGeographic() && (to_srs->isMercator() || to_srs->isSphericalMercator()))
     {
-        const Profile* merc = Registry::instance()->getSphericalMercatorProfile();
+        osg::ref_ptr<const Profile> merc = Profile::create(Profile::SPHERICAL_MERCATOR);
         in_out_ymin = clamp(in_out_ymin, merc->getLatLongExtent().yMin(), merc->getLatLongExtent().yMax());
         in_out_ymax = clamp(in_out_ymax, merc->getLatLongExtent().yMin(), merc->getLatLongExtent().yMax());
     }
@@ -1466,7 +1452,7 @@ SpatialReference::transformGrid(
 void
 SpatialReference::init()
 {
-    void* handle = getHandle();
+    OGRSpatialReferenceH handle = static_cast<OGRSpatialReferenceH>(getHandle());
     
     if (!handle)
     {

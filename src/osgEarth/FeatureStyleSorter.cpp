@@ -1,27 +1,10 @@
-/* -*-c++-*- */
-/* osgEarth - Dynamic map generation toolkit for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include <osgEarth/FeatureStyleSorter>
-#include <osgEarth/Registry>
 #include <osgEarth/FeatureSource>
 #include <osgEarth/StyleSheet>
-#include <osgText/String>
-#include <osgEarth/BuildConfig>
 
 using namespace osgEarth;
 
@@ -57,8 +40,16 @@ FeatureStyleSorter::sort_usingEmbeddedStyles(
 
         for(auto& feature : features)
         {
-            FeatureList one{ feature };            
-            processFeaturesForStyle(feature->style().get(), one, progress);
+            FeatureList one{ feature };
+
+            if (feature->style())
+            {
+                processFeaturesForStyle(*feature->style(), one, progress);
+            }
+            else
+            {
+                processFeaturesForStyle(Style(), one, progress); // empty style
+            }
         }
     }
 }

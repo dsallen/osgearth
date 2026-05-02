@@ -1,23 +1,8 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
+/* osgEarth
 * Copyright 2008-2014 Pelican Mapping
-* http://osgearth.org
-*
-* osgEarth is free software; you can redistribute it and/or modify
-* it under the terms of the GNU Lesser General Public License as published by
-* the Free Software Foundation; either version 2 of the License, or
-* (at your option) any later version.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU Lesser General Public License for more details.
-*
-* You should have received a copy of the GNU Lesser General Public License
-* along with this program.  If not, see <http://www.gnu.org/licenses/>
+* MIT License
 */
 #include "TerrainTileModelFactory"
-#include "ImageToHeightFieldConverter"
 #include "Map"
 #include "Registry"
 #include "LandCoverLayer"
@@ -453,8 +438,19 @@ TerrainTileModelFactory::addElevation(
         if (elevTex.valid())
         {
             model->elevation.revision = combinedRevision;
-            model->elevation.texture = Texture::create(elevTex.get());
+            model->elevation.texture = Texture::create(elevTex->getElevationTexture());
+
+            auto [minh, maxh] = elevTex->getMaxima();
+            if (model->elevation.texture->getPixelFormat() == GL_RG)
+            {
+                model->elevation.texture->minValue() = minh;
+                model->elevation.texture->maxValue() = maxh;
+            }
+
             model->elevation.texture->category() = LABEL_ELEVATION;
+
+            model->elevation.minHeight = minh;
+            model->elevation.maxHeight = maxh;
 
             if (_options.useNormalMaps() == true)
             {

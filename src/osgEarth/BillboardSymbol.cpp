@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include <osgEarth/BillboardSymbol>
 #include <osgEarth/BillboardResource>
@@ -26,27 +12,19 @@ using namespace osgEarth;
 OSGEARTH_REGISTER_SIMPLE_SYMBOL(billboard, BillboardSymbol);
 
 
-BillboardSymbol::BillboardSymbol(const BillboardSymbol& rhs,const osg::CopyOp& copyop):
-InstanceSymbol(rhs, copyop)
+BillboardSymbol::BillboardSymbol(const BillboardSymbol& rhs, const osg::CopyOp& copyop) :
+    InstanceSymbol(rhs, copyop)
 {
-    width().init(15.0f);
-    height().init(10.0f);
-    sizeVariation().init(0.0f);
-    selectionWeight().init(1);
+    //nop
 }
 
-BillboardSymbol::BillboardSymbol( const Config& conf ) :
-InstanceSymbol( conf )
+BillboardSymbol::BillboardSymbol(const Config& conf) :
+    InstanceSymbol(conf)
 {
-    width().init(15.0f);
-    height().init(10.0f);
-    sizeVariation().init(0.0f);
-    selectionWeight().init(1);
-
-    mergeConfig( conf );
+    mergeConfig(conf);
 }
 
-Config 
+Config
 BillboardSymbol::getConfig() const
 {
     Config conf = InstanceSymbol::getConfig();
@@ -87,7 +65,7 @@ BillboardSymbol::parseSLD(const Config& c, Style& style)
         style.getOrCreate<BillboardSymbol>()->url() = StringExpression(c.value(), c.referrer());
     }
     else if (match(c.key(), "billboard-top-image")) {
-        style.getOrCreate<BillboardSymbol>()->topURL() = StringExpression(c.value(), c.referrer());
+        style.getOrCreate<BillboardSymbol>()->topURL() = Expression<URI>(c.value(), c.referrer());
     }
     else if ( match(c.key(), "billboard-width") ) {
         style.getOrCreate<BillboardSymbol>()->width() = as<float>(c.value(), 10.0f);
@@ -102,4 +80,3 @@ BillboardSymbol::parseSLD(const Config& c, Style& style)
         style.getOrCreate<BillboardSymbol>()->selectionWeight() = as<unsigned>(c.value(), 1u);
     }
 }
-

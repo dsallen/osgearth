@@ -1,33 +1,17 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include "BridgeLayer"
 #include "RoadNetwork"
 
 #include <osgEarth/GeometryCompiler>
 #include <osgEarth/AltitudeFilter>
-#include <osgEarth/JoinLines>
 #include <osgEarth/TessellateOperator>
 #include <osgEarth/FeatureStyleSorter>
 #include <osgEarth/TerrainConstraintLayer>
 #include <osgEarth/weemesh.h>
 #include <osgEarth/Locators>
-#include <osgEarth/GeometryUtils>
 
 #include <unordered_set>
 
@@ -129,6 +113,55 @@ namespace
             }
         }
     }
+
+    void extendEndpoints(RoadNetwork& network, const Distance& distance)
+    {
+        std::set<const RoadNetwork::Junction*> visited;
+
+        for (auto& relation : network.relations)
+        {
+            for (auto* way : relation.ways)
+            {
+                if (way->start->is_endpoint() && visited.count(way->start) == 0)
+                {
+                    auto& p1 = way->geometry->at(1);
+                    auto& p0 = way->geometry->at(0);
+                    auto vec = p0 - p1;
+                    vec.normalize();
+                    p0 += vec * distance.as(Units::METERS);
+
+                    RoadNetwork::Junction new_junction(p0);
+                    new_junction.ways = way->start->ways;
+                    network.junctions.erase(*way->start);
+                    auto iter = network.junctions.emplace(new_junction);
+                    way->start = &*iter.first;
+
+                    way->length += distance.as(Units::METERS);
+
+                    visited.emplace(way->start); // mark as visited
+                }
+
+                if (way->end->is_endpoint() && visited.count(way->end) == 0)
+                {
+                    auto& p1 = way->geometry->at(way->geometry->size() - 2);
+                    auto& p0 = way->geometry->at(way->geometry->size() - 1);
+                    auto vec = p0 - p1;
+                    vec.normalize();
+                    p0 += vec * distance.as(Units::METERS);
+
+                    RoadNetwork::Junction new_junction(p0);
+                    new_junction.ways = way->end->ways;
+                    network.junctions.erase(*way->end);
+                    auto iter = network.junctions.emplace(new_junction);
+                    way->end = &*iter.first;
+
+                    way->length += distance.as(Units::METERS);
+
+                    visited.emplace(way->end);
+                }
+            }
+        }
+    }
 }
 
 //....................................................................
@@ -209,6 +242,7 @@ void
 BridgeLayer::Options::fromConfig(const Config& conf)
 {
     conf.get("constraint_min_level", constraintMinLevel());
+    conf.get("span_extend", spanExtend());
 }
 
 Config
@@ -216,6 +250,7 @@ BridgeLayer::Options::getConfig() const
 {
     auto conf = super::getConfig();
     conf.set("constraint_min_level", constraintMinLevel());
+    conf.set("span_extend", spanExtend());
     return conf;
 }
 
@@ -243,29 +278,32 @@ BridgeLayer::addedToMap(const Map* map)
     //_filters.emplace_back(new JoinLinesFilter());
 
     // create a terrain constraint layer that will 'clamp' the terrain to the end caps of our bridges.
-    auto* c = new TerrainConstraintLayer();
-    c->setName(getName() + "_constraints");
-    c->setRemoveInterior(false);
-    c->setRemoveExterior(false);
-    c->setHasElevation(true);
-    c->setMinLevel(std::max(options().constraintMinLevel().value(), getMinLevel()));
-
-    c->constraintCallback([this](const TileKey& key, MeshConstraint& result, FilterContext*, ProgressCallback* progress)
-        {
-            this->addConstraint(key, result, progress);
-        });
-
-    auto status = c->open(getReadOptions());
-    if (!status.isOK())
+    if (options().constraintMinLevel() > 0 && options().constraintMinLevel() <= 21)
     {
-        OE_WARN << LC << "Failed to open constraint layer: " << status.message() << std::endl;
-        return;
-    }
-    
-    Map* mutableMap = const_cast<Map*>(map);
-    mutableMap->addLayer(c);
+        auto* c = new TerrainConstraintLayer();
+        c->setName(getName() + "_constraints");
+        c->setRemoveInterior(false);
+        c->setRemoveExterior(false);
+        c->setHasElevation(true);
+        c->setMinLevel(std::max(options().constraintMinLevel().value(), getMinLevel()));
 
-    _constraintLayer = c;
+        c->constraintCallback([this](const TileKey& key, MeshConstraint& result, FilterContext*, ProgressCallback* progress)
+            {
+                this->addConstraint(key, result, progress);
+            });
+
+        auto status = c->open(getReadOptions());
+        if (!status.isOK())
+        {
+            OE_WARN << LC << "Failed to open constraint layer: " << status.message() << std::endl;
+            return;
+        }
+
+        Map* mutableMap = const_cast<Map*>(map);
+        mutableMap->addLayer(c);
+
+        _constraintLayer = c;
+    }
 }
 
 void
@@ -791,8 +829,10 @@ namespace
         line->stroke()->width()->setDefaultUnits(Units::METERS);
         line->imageURI() = bridge->deckSkin();
 
+        line->doubleSided() = true;
+
         auto* render = style.getOrCreate<RenderSymbol>();
-        render->backfaceCulling() = true; // false;
+        render->backfaceCulling() = true;
 
         // clone the features
         FeatureList features;
@@ -991,6 +1031,11 @@ BridgeLayer::createTileImplementation(const TileKey& key, ProgressCallback* prog
 
             // figure out which edges go together:
             network.buildRelations();
+
+            if (options().spanExtend().isSet())
+            {
+                extendEndpoints(network, options().spanExtend().value());
+            }
 
             // clamp ground-connection points to the terrain and interpolate midpoints:
             clampRoads(network, key.getExtent(), _session->getMap()->getElevationPool(), progress);

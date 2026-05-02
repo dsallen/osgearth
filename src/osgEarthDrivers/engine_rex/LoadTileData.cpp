@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
+/* osgEarth
 * Copyright 2008-2014 Pelican Mapping
-* http://osgearth.org
-*
-* osgEarth is free software; you can redistribute it and/or modify
-* it under the terms of the GNU Lesser General Public License as published by
-* the Free Software Foundation; either version 2 of the License, or
-* (at your option) any later version.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU Lesser General Public License for more details.
-*
-* You should have received a copy of the GNU Lesser General Public License
-* along with this program.  If not, see <http://www.gnu.org/licenses/>
+* MIT License
 */
 #include "LoadTileData"
 #include "SurfaceNode"
@@ -138,17 +124,17 @@ LoadTileDataOperation::merge()
     // context went out of scope - bail
     osg::ref_ptr<TerrainEngineNode> engine;
     if (!_engine.lock(engine))
-        return true;
+        return false;
 
     // map went out of scope - bail
     osg::ref_ptr<const Map> map = engine->getMap();
     if (!map.valid())
-        return true;
+        return false;
 
     // tilenode went out of scope - bail
     osg::ref_ptr<TileNode> tilenode;
     if (!_tilenode.lock(tilenode))
-        return true;
+        return false;
 
     // no data model at all - done
     // GW: should never happen.
@@ -158,11 +144,9 @@ LoadTileDataOperation::merge()
         return false;
     }
 
-    OE_SOFT_ASSERT_AND_RETURN(_result.available(), false);
-
     OE_PROFILING_ZONE;
 
-    const osg::ref_ptr<TerrainTileModel>& model = _result.value(); //.get();
+    const osg::ref_ptr<TerrainTileModel>& model = _result.value();
 
     // Check the map data revision and scan the manifest and see if any
     // revisions don't match the revisions in the original manifest.

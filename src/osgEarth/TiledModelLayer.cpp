@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include "TiledModelLayer"
 #include "SimplePager"
@@ -35,6 +21,7 @@ void TiledModelLayer::Options::fromConfig(const Config& conf)
     conf.get("min_level", minLevel());
     conf.get("max_level", maxLevel());
     conf.get("nvgl", nvgl());
+    conf.get("profile", profile());
 }
 
 Config
@@ -46,6 +33,7 @@ TiledModelLayer::Options::getConfig() const
     conf.set("min_level", minLevel());
     conf.set("max_level", maxLevel());
     conf.set("nvgl", nvgl());
+    conf.set("profile", profile());
     return conf;
 }
 
@@ -80,14 +68,11 @@ TiledModelLayer::createTile(const TileKey& key, ProgressCallback* progress) cons
     osg::ref_ptr<osg::Node> result;
 
     // check the L2 cache
+    auto record = _localcache.get(key);
+    if (record.has_value())
     {
-        ScopedReadLock lock(_localcacheMutex);
-        L2Cache::Record r;
-        if (_localcache.get(key, r))
-        {
-            OE_DEBUG << "L2 hit(" << key.str() << ")" << std::endl;
-            return r.value();
-        }
+        OE_DEBUG << "L2 hit(" << key.str() << ")" << std::endl;
+        return record.value();
     }
 
     // only create one at a time per key
@@ -190,7 +175,6 @@ TiledModelLayer::createTile(const TileKey& key, ProgressCallback* progress) cons
 
     if (result.valid())
     {
-        ScopedWriteLock lock(_localcacheMutex);
         _localcache.insert(key, result);
     }
 
@@ -285,11 +269,7 @@ void TiledModelLayer::init()
 
 Status TiledModelLayer::closeImplementation()
 {
-    {
-        ScopedWriteLock lock(_localcacheMutex);
-        _localcache.clear();
-    }
-
+    _localcache.clear();
     _root->removeChildren(0, _root->getNumChildren());
     return Status::NoError;
 }

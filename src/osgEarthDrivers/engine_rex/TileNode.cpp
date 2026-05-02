@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
+/* osgEarth
 * Copyright 2008-2014 Pelican Mapping
-* http://osgearth.org
-*
-* osgEarth is free software; you can redistribute it and/or modify
-* it under the terms of the GNU Lesser General Public License as published by
-* the Free Software Foundation; either version 2 of the License, or
-* (at your option) any later version.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU Lesser General Public License for more details.
-*
-* You should have received a copy of the GNU Lesser General Public License
-* along with this program.  If not, see <http://www.gnu.org/licenses/>
+* MIT License
 */
 #include "TileNode"
 #include "SurfaceNode"
@@ -22,15 +8,11 @@
 #include "Loader"
 #include "LoadTileData"
 #include "SelectionInfo"
-#include "ElevationTextureUtils"
 #include "TerrainCuller"
-#include "RexTerrainEngineNode"
 
 #include <osgEarth/TerrainTileModel>
 #include <osgEarth/CullingUtils>
 #include <osgEarth/ImageUtils>
-#include <osgEarth/Utils>
-#include <osgEarth/NodeUtils>
 #include <osgEarth/Metrics>
 #include <osgEarth/Notify>
 
@@ -59,7 +41,8 @@ TileNode::TileNode(const TileKey& key, TileNode* parent, EngineContext* context,
     _lastTraversalFrame(0),
     _loadPriority(0.0f)
 {
-    OE_HARD_ASSERT(context != nullptr);
+    if (!context)
+        return;
 
     // build the actual geometry for this node
     createGeometry(progress);
@@ -139,15 +122,15 @@ TileNode::createGeometry(Cancelable* progress)
         // calculate its bounding box and sphere.
         drawable->setModifyBBoxCallback(_context->getModifyBBoxCallback());
 
-        osg::ref_ptr<const osg::Image> elevationRaster = getElevationRaster();
-        osg::Matrixf elevationMatrix = getElevationMatrix();
+        auto elevationRaster = getElevationRaster();
+        auto elevationMatrix = getElevationMatrix();
 
         // Create the node to house the tile drawable and perform horizon culling:
         _surface = new SurfaceNode(_key, drawable);
 
-        if (elevationRaster.valid())
+        if (elevationRaster)
         {
-            _surface->setElevationRaster(elevationRaster.get(), elevationMatrix);
+            _surface->setElevationRaster(elevationRaster, elevationMatrix);
         }
     }
     else
@@ -253,7 +236,7 @@ TileNode::areSiblingsDormant() const
 }
 
 void
-TileNode::setElevationRaster(const osg::Image* image, const osg::Matrixf& matrix)
+TileNode::setElevationRaster(Texture::Ptr image, const osg::Matrixf& matrix)
 {
     if (image != getElevationRaster() || matrix != getElevationMatrix())
     {
@@ -267,12 +250,12 @@ TileNode::updateElevationRaster()
 {
     const Sampler& elev = _renderModel._sharedSamplers[SamplerBinding::ELEVATION];
     if (elev._texture)
-        setElevationRaster(elev._texture->osgTexture()->getImage(0), elev._matrix);
+        setElevationRaster(elev._texture, elev._matrix);
     else
         setElevationRaster(nullptr, osg::Matrixf::identity());
 }
 
-const osg::Image*
+Texture::Ptr
 TileNode::getElevationRaster() const
 {
     return _surface.valid() ? _surface->_drawable->getElevationRaster() : 0L;

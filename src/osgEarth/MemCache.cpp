@@ -1,22 +1,9 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include <osgEarth/MemCache>
+#include <algorithm>
 
 using namespace osgEarth;
 
@@ -28,33 +15,32 @@ using namespace osgEarth;
 
 namespace
 {
-    typedef std::pair<osg::ref_ptr<const osg::Object>, Config> MemCacheEntry;
-    typedef LRUCache<std::string, MemCacheEntry> MemCacheLRU;
+    using MemCacheEntry = std::pair<osg::ref_ptr<const osg::Object>, Config>;
+    using MemCacheLRU = LRUCache<std::string, MemCacheEntry>;
 
     struct MemCacheBin : public CacheBin
     {
-        MemCacheBin( const std::string& id, unsigned maxSize )
-            : CacheBin( id, true ),
-              _lru    ( true /* MT-safe */, maxSize )
+        MemCacheBin(const std::string& id, unsigned maxSize)
+            : CacheBin(id, true),
+            _lru(maxSize)
         {
             //nop
         }
 
-        ReadResult readObject(const std::string& key, const osgDB::Options*)
+        ReadResult readObject(const std::string& key, const osgDB::Options*) override
         {
-            MemCacheLRU::Record rec;
-            _lru.get(key, rec);
+            auto cached = _lru.get(key);
 
             // clone required since the cache is in memory
 
-            if ( rec.valid() )
+            if (cached.has_value())
             {
 #ifdef CLONE_DATA
                 return ReadResult( 
                    osg::clone(rec.value().first.get(), osg::CopyOp::DEEP_COPY_ALL),
                    rec.value().second );
 #else
-                return ReadResult(const_cast<osg::Object*>(rec.value().first.get()), rec.value().second);
+                return ReadResult(const_cast<osg::Object*>(cached.value().first.get()), cached.value().second);
 #endif
             }
             else
@@ -63,17 +49,17 @@ namespace
             }
         }
 
-        ReadResult readImage(const std::string& key, const osgDB::Options* readOptions)
+        ReadResult readImage(const std::string& key, const osgDB::Options* readOptions) override
         {
             return readObject(key, readOptions);
         }
 
-        ReadResult readString(const std::string& key, const osgDB::Options* readOptions)
+        ReadResult readString(const std::string& key, const osgDB::Options* readOptions) override
         {
             return readObject(key, readOptions);
         }
 
-        bool write( const std::string& key, const osg::Object* object, const Config& meta, const osgDB::Options* writeOptions)
+        bool write( const std::string& key, const osg::Object* object, const Config& meta, const osgDB::Options* writeOptions) override
         {
             if ( object ) 
             {
@@ -89,34 +75,22 @@ namespace
                 return false;
         }
 
-        bool remove(const std::string& key)
+        bool remove(const std::string& key) override
         {
             _lru.erase(key);
             return true;
         }
 
-        bool touch(const std::string& key)
+        bool touch(const std::string& key) override
         {
             // just doing a get will put it at the front of the LRU list
-            MemCacheLRU::Record dummy;
-            return _lru.get(key, dummy);
+            return _lru.touch(key);
         }
 
-        RecordStatus getRecordStatus( const std::string& key )
+        RecordStatus getRecordStatus( const std::string& key ) override
         {
             // ignore minTime; MemCache does not support expiration
-            return _lru.has(key) ? STATUS_OK : STATUS_NOT_FOUND;
-        }
-
-        bool purge()
-        {
-            _lru.clear();
-            return true;
-        }
-
-        std::string getHashedKey(const std::string& key) const
-        {
-            return key;
+            return _lru.get(key).has_value() ? STATUS_OK : STATUS_NOT_FOUND;
         }
 
         MemCacheLRU _lru;
@@ -128,8 +102,8 @@ namespace
 
 //------------------------------------------------------------------------
 
-MemCache::MemCache( unsigned maxBinSize ) :
-_maxBinSize( osg::maximum(maxBinSize, 1u) )
+MemCache::MemCache(unsigned maxBinSize) :
+    _maxBinSize(std::max(maxBinSize, 1u))
 {
     //nop
 }
@@ -138,15 +112,6 @@ CacheBin*
 MemCache::addBin( const std::string& binID )
 {
     return _bins.getOrCreate( binID, new MemCacheBin(binID, _maxBinSize) );
-}
-
-CacheBin*
-MemCache::getOrCreateBin(const std::string& binID)
-{
-    CacheBin* bin = getBin(binID);
-    if ( !bin )
-        bin = addBin(binID);
-    return bin;
 }
 
 CacheBin*
@@ -163,13 +128,4 @@ MemCache::getOrCreateDefaultBin()
     }
 
     return _defaultBin.get();
-}
-
-
-void
-MemCache::dumpStats(const std::string& binID)
-{
-    MemCacheBin* bin = static_cast<MemCacheBin*>(getBin(binID));
-    CacheStats stats = bin->_lru.getStats();
-    OE_INFO << LC << "hit ratio = " << stats._hitRatio << std::endl;
 }

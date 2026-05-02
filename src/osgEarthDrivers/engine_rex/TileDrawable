@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
+/* osgEarth
 * Copyright 2008-2014 Pelican Mapping
-* http://osgearth.org
-*
-* osgEarth is free software; you can redistribute it and/or modify
-* it under the terms of the GNU Lesser General Public License as published by
-* the Free Software Foundation; either version 2 of the License, or
-* (at your option) any later version.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU Lesser General Public License for more details.
-*
-* You should have received a copy of the GNU Lesser General Public License
-* along with this program.  If not, see <http://www.gnu.org/licenses/>
+* MIT License
 */
 #pragma once
 
@@ -22,10 +8,9 @@
 #include "TileRenderModel"
 #include "GeometryPool"
 #include <osg/Geometry>
-#include <osg/Image>
 #include <osg/Matrixf>
 #include <osgEarth/TileKey>
-#include <osgEarth/Map>
+#include <osgEarth/TextureArena>
 
 using namespace osgEarth;
 
@@ -74,7 +59,7 @@ namespace osgEarth { namespace REX
 
     private:
 
-        osg::ref_ptr<const osg::Image> _elevationRaster;
+        Texture::Ptr _elevationRaster;
         osg::Matrixf _elevationScaleBias;
 
     public:
@@ -92,10 +77,10 @@ namespace osgEarth { namespace REX
     public:
 
         // Sets the elevation raster for this tile
-        void setElevationRaster(const osg::Image* image, const osg::Matrixf& scaleBias);
+        void setElevationRaster(Texture::Ptr image, const osg::Matrixf& scaleBias);
 
-        const osg::Image* getElevationRaster() const {
-            return _elevationRaster.get();
+        Texture::Ptr getElevationRaster() const {
+            return _elevationRaster;
         }
 
         const osg::Matrixf& getElevationMatrix() const {

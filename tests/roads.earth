@@ -25,7 +25,7 @@ https://readymap.org
 
     <DebugImage name="TileKey debug" open="false"/>
 
-    <FeatureModel name="Road center-line verts" open="false">
+    <FeatureModel name="Road center-line verts">
         <profile>spherical-mercator</profile>
         <features>roads-data</features>
         <styles>
@@ -33,10 +33,11 @@ https://readymap.org
                 default {
                     point-fill: #00ffff;
                     point-size: 12;
+                    point-smooth: true;
                     stroke: #ffff00;
                     stroke-width: 2px;
                     render-order: 1;
-                    render-depth-offset: true;
+                    render-depth-offset: 1m;
                     altitude-clamping: terrain;
                 }
             </style>
@@ -78,10 +79,10 @@ https://readymap.org
         </styles>
     </TiledFeatureModel>
 
-    <RoadSurface name="Road surface - rasterized" min_level="14" max_data_level="18" open="false">
+    <RoadSurface name="Road surface - rasterized" min_level="14" max_data_level="18" open="true">
         <cache_policy usage="no_cache"/>
         <tile_size>512</tile_size>
-        <features>roads-data</features>
+        <features>roads-data-local</features>
         <styles>
             <style type="text/css">
                 default {
@@ -92,6 +93,17 @@ https://readymap.org
             </style>
         </styles>
     </RoadSurface>
+
+    <MVTFeatures name="roads-data-local">
+        <url>E:/osm.mbtiles</url>
+        <min_level>14</min_level>
+        <max_level>14</max_level>
+        <profile>spherical-mercator</profile>
+        <format>pbf</format>
+        <filters>
+            <attributes>highway</attributes>
+        </filters>
+    </MVTFeatures>
 
     <XYZFeatures name="roads-data">
         <url>https://readymap.org/readymap/mbtiles/osm/{z}/{x}/{-y}.pbf</url>
@@ -149,6 +161,4 @@ https://readymap.org
             <srs>+proj=longlat +datum=WGS84 +no_defs</srs>
         </viewpoint>
     </viewpoints>
-
-    <libraries>osgEarthProcedural</libraries>
 </Map>

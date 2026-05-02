@@ -1,28 +1,14 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include "TMS"
 #include "Registry"
 #include "FileUtils"
 #include "XmlUtils"
 #include "LandCover"
-#include "ImageToHeightFieldConverter"
 #include "MetaTile"
+#include "GDAL"
 #include <osgDB/FileUtils>
 
 using namespace osgEarth;
@@ -1060,6 +1046,53 @@ TMS::Driver::write(const URI& uri,
 }
 
 bool
+TMS::Driver::write(const URI& uri,
+    const TileKey& key,
+    const osg::HeightField* heightfield,
+    bool invertY,
+    ProgressCallback* progress,
+    const osgDB::Options* writeOptions) const
+{
+    if (!_writer.valid())
+    {
+        OE_WARN << LC << "Repo is read-only; store failed" << std::endl;
+        return false;
+    }
+
+    if (_tileMap.valid() && heightfield)
+    {
+        // compute the URL from the tile map:
+        std::string image_url = _tileMap->getURL(key, invertY);
+
+        // assert the folder exists:
+        if (osgEarth::makeDirectoryForFile(image_url))
+        {
+            osgDB::ReaderWriter::WriteResult result;
+
+            std::string data = GDAL::heightFieldToTiff(heightfield);
+
+            std::ofstream fout;
+            fout.open(image_url.c_str(), std::ios::out | std::ios::binary);
+            if (fout.is_open())
+            {
+                fout.write(data.c_str(), data.size());
+                fout.close();
+            }
+            return true;
+        }
+        else
+        {
+            OE_WARN << LC << "Failed to make directory for " << image_url << std::endl;
+            return false;
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+bool
 TMS::Driver::resolveWriter(const std::string& format)
 {
     _writer = osgDB::Registry::instance()->getReaderWriterForMimeType(
@@ -1357,20 +1390,17 @@ TMSElevationLayer::createHeightFieldImplementation(const TileKey& key, ProgressC
         MetaTile<GeoImage> metaImage;
         metaImage.setCreateTileFunction([this](const TileKey& key, ProgressCallback* progress)
             {
-                Util::LRUCache<TileKey, GeoImage>::Record r;
-                if (_stitchingCache.get(key, r))
-                {
-                    return r.value();
-                }
-                else
-                {
-                    GeoImage image = _imageLayer->createImage(key, progress);
-                    if (image.valid())
+                auto record = _stitchingCache.get_or_insert(
+                    key,
+                    [&](auto& out)
                     {
-                        _stitchingCache.insert(key, image);
-                    }
-                    return image;
-                }
+                        GeoImage image = _imageLayer->createImage(key, progress);
+                        if (image.valid()) out = image;                        
+                    });
+
+                if (record.has_value())
+                    return record.value();
+                return GeoImage::INVALID;
             });
         metaImage.setCenterTileKey(key, progress);
 
@@ -1454,7 +1484,21 @@ TMSElevationLayer::writeHeightFieldImplementation(
         return getStatus();
     }
 
-    ImageToHeightFieldConverter conv;
-    osg::ref_ptr<osg::Image> image = conv.convert(hf);
-    return _imageLayer->writeImageImplementation(key, image.get(), progress);
+    if (!isWritingRequested())
+        return Status::ServiceUnavailable;
+
+    bool ok = _imageLayer->getDriver().write(
+        options().url().get(),
+        key,
+        hf,
+        options().tmsType().get() == "google",
+        progress,
+        getReadOptions());
+
+    if (!ok)
+    {
+        return Status::ServiceUnavailable;
+    }
+
+    return STATUS_OK;
 }

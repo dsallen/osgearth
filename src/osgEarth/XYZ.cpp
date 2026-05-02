@@ -1,28 +1,12 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include "XYZ"
 #include <osgEarth/Registry>
-#include <osgEarth/FileUtils>
-#include <osgEarth/XmlUtils>
 #include <osgEarth/ImageToHeightFieldConverter>
 #include "MetaTile"
-#include <osgDB/FileUtils>
+
 #include <osgDB/WriteFile>
 
 using namespace osgEarth;
@@ -345,21 +329,18 @@ XYZElevationLayer::createHeightFieldImplementation(const TileKey& key, ProgressC
         MetaTile<GeoImage> metaImage;
         metaImage.setCreateTileFunction([this](const TileKey& key, ProgressCallback* progress)
             {
-                Util::LRUCache<TileKey, GeoImage>::Record r;
-                if (_stitchingCache.get(key, r))
-                {
-                    return r.value();
-                }
-                else
-                {
-                    GeoImage image = _imageLayer->createImage(key, progress);
-                    if (image.valid())
-                    {
-                        _stitchingCache.insert(key, image);
-                    }
-                    return image;
-                }
+                auto result = _stitchingCache.get_or_insert(
+                    key,
+                    [&](auto& new_value) {
+                        GeoImage image = _imageLayer->createImage(key, progress);
+                        if (image.valid())
+                            new_value = image;
+                    });
+
+                if (result.has_value()) return result.value();
+                else return GeoImage::INVALID;
             });
+
         metaImage.setCenterTileKey(key, progress);
 
         if (!metaImage.getCenterTile().valid() || !metaImage.getScaleBias().isIdentity())

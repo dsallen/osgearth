@@ -1,28 +1,11 @@
-/* -*-c++-*- */
-/* osgEarth - Dynamic map generation toolkit for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include <osgEarth/FeatureRasterizer>
 #include <osgEarth/Metrics>
 #include <osgEarth/Registry>
-
-#include <osgEarth/FeatureSource>
 #include <osgEarth/StyleSheet>
-#include <osgText/String>
 #include <osgEarth/BuildConfig>
 
 using namespace osgEarth;
@@ -988,14 +971,17 @@ FeatureRasterizer::render_agglite(
             bool addLineOrOutline = false;
 
             // first see if the feature has overriding symbols:
-            if (f->style()->has<PolygonSymbol>())
-                polySymbol = f->style()->get<PolygonSymbol>();
+            if (f->style())
+            {
+                if (f->style()->has<PolygonSymbol>())
+                    polySymbol = f->style()->get<PolygonSymbol>();
 
-            if (f->style()->has<LineSymbol>())
-                lineSymbol = f->style()->get<LineSymbol>();
+                if (f->style()->has<LineSymbol>())
+                    lineSymbol = f->style()->get<LineSymbol>();
 
-            if (f->style()->has<CoverageSymbol>())
-                covSymbol = f->style()->get<CoverageSymbol>();
+                if (f->style()->has<CoverageSymbol>())
+                    covSymbol = f->style()->get<CoverageSymbol>();
+            }
 
             // if it's a polygon and we have a polygon symbol, queue it
             if (f->getGeometry()->isPolygon())
@@ -1200,7 +1186,7 @@ FeatureRasterizer::render_agglite(
             else
             {
                 const PolygonSymbol* poly =
-                    feature->style().isSet() && feature->style()->has<PolygonSymbol>() ? feature->style()->get<PolygonSymbol>() :
+                    feature->style() && feature->style()->has<PolygonSymbol>() ? feature->style()->get<PolygonSymbol>() :
                     globalPolySymbol;
 
                 Color color = poly ? poly->fill()->color() : Color::White;
@@ -1224,7 +1210,7 @@ FeatureRasterizer::render_agglite(
             else
             {
                 const LineSymbol* line =
-                    feature->style().isSet() && feature->style()->has<LineSymbol>() ? feature->style()->get<LineSymbol>() :
+                    feature->style() && feature->style()->has<LineSymbol>() ? feature->style()->get<LineSymbol>() :
                     globalLineSymbol;
 
                 osg::Vec4f color = line ? static_cast<osg::Vec4>(line->stroke()->color()) : osg::Vec4(1, 1, 1, 1);

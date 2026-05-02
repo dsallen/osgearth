@@ -1,7 +1,6 @@
 #
 # osgEarth ImGui NodeKit
 #
-find_package(GLEW REQUIRED)
 
 set(OSGEARTH_HAVE_IMGUI_NODEKIT ON PARENT_SCOPE) # for BuildConfig
 
@@ -35,6 +34,7 @@ set(STOCK_PANELS
     TerrainGUI
     TextureInspectorGUI
     ViewpointsGUI
+    FeatureEditGUI
     
     # osgEarthProcedural
     LifeMapLayerGUI
@@ -60,5 +60,5 @@ add_osgearth_library(
     TARGET ${LIB_NAME}
     SOURCES ${LIB_SOURCES} ${IMGUI_SOURCES}
     PUBLIC_HEADERS ${LIB_HEADERS} ${IMGUI_HEADERS} ${STOCK_PANELS}
-    LIBRARIES PUBLIC GLEW::GLEW OpenGL::GL
+    LIBRARIES PUBLIC OpenGL::GL
     FOLDER "NodeKits")

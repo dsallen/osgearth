@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
+/* osgEarth
  * Copyright 2008-2014 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+ * MIT License
  */
 #ifndef OSGEARTH_REX_TERRAIN_DRAW_STATE_H
 #define OSGEARTH_REX_TERRAIN_DRAW_STATE_H 1
@@ -75,10 +61,12 @@ namespace osgEarth { namespace REX
         GLint _layerUidUL = -1;
         GLint _layerOrderUL = -1;
         GLint _morphConstantsUL = -1;
+        GLint _elevMinMaxUL = -1;
 
         optional<osg::Vec2f> _morphConstants;
         optional<bool> _parentTextureExists;
         optional<int> _layerOrder;
+        optional<osg::Vec2f> _elevMinMax;
 
         TileSamplerState _samplerState;
 

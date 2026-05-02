@@ -1,20 +1,7 @@
 /* --*-c++-*-- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 
 #include <osgEarth/FeatureModelGraph>
@@ -22,10 +9,8 @@
 #include <osgEarth/FeatureSourceIndexNode>
 #include <osgEarth/FilterContext>
 
-#include <osgEarth/Capabilities>
 #include <osgEarth/CullingUtils>
 #include <osgEarth/ElevationLOD>
-#include <osgEarth/ElevationQuery>
 #include <osgEarth/FadeEffect>
 #include <osgEarth/NodeUtils>
 #include <osgEarth/Registry>
@@ -34,24 +19,19 @@
 #include <osgEarth/GLUtils>
 #include <osgEarth/Metrics>
 #include <osgEarth/ElevationRanges>
-#include <osgEarth/LineDrawable>
 #include <osgEarth/NetworkMonitor>
 #include <osgEarth/PagedNode>
 #include <osgEarth/Chonk>
 
-#include <osg/CullFace>
-#include <osg/PagedLOD>
-#include <osg/ProxyNode>
 #include <osg/PolygonOffset>
 #include <osg/Depth>
 #include <osg/ShapeDrawable>
-#include <osgDB/FileNameUtils>
-#include <osgDB/ReaderWriter>
-#include <osgDB/WriteFile>
-#include <osgUtil/Optimizer>
 
-#include <algorithm>
 #include <iterator>
+
+#ifdef OSGEARTH_HAVE_SUPERLUMINALAPI
+#include <Superluminal/PerformanceAPI.h>
+#endif
 
 #define LC "[FeatureModelGraph] " << _ownerName << ": "
 
@@ -910,6 +890,13 @@ FeatureModelGraph::load(
     OE_PROFILING_ZONE;
     OE_PROFILING_ZONE_TEXT(_ownerName);
 
+#ifdef OSGEARTH_HAVE_SUPERLUMINALAPI
+    PERFORMANCEAPI_INSTRUMENT_FUNCTION();
+    PERFORMANCEAPI_INSTRUMENT_DATA("layer", _ownerName.c_str());
+    std::string tileStr = Stringify() << lod << "/" << tileX << "/" << tileY;
+    PERFORMANCEAPI_INSTRUMENT_DATA("key", tileStr.c_str());
+#endif
+
     OE_TEST << LC << "load " << lod << "_" << tileX << "_" << tileY << std::endl;
 
     osg::ref_ptr<osg::Group> result;
@@ -1516,7 +1503,10 @@ FeatureModelGraph::build(
 
                 // Get the Group that parents all features of this particular style. Note, this
                 // might be NULL if the factory does not support style groups.
-                osg::Group* styleGroup = getOrCreateStyleGroupFromFactory(*feature->style());
+                static Style emptyStyle;
+                const Style& feature_style = feature->style() ? *feature->style() : emptyStyle;
+
+                osg::Group* styleGroup = getOrCreateStyleGroupFromFactory(feature_style);
                 if (styleGroup)
                 {
                     if (!group->containsNode(styleGroup))
@@ -1525,7 +1515,7 @@ FeatureModelGraph::build(
                     }
                 }
 
-                if ( createOrUpdateNode(cursor.get(), *feature->style(), context, readOptions, node, baseQuery))
+                if ( createOrUpdateNode(cursor.get(), feature_style, context, readOptions, node, baseQuery))
                 {
                     if (node.valid())
                     {

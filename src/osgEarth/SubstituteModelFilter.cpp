@@ -1,33 +1,16 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include <osgEarth/SubstituteModelFilter>
 #include <osgEarth/FeatureSourceIndexNode>
 #include <osgEarth/FilterContext>
-#include <osgEarth/GeometryUtils>
 
 #include <osgEarth/MeshFlattener>
 #include <osgEarth/StyleSheet>
 
 #include <osgEarth/ECEF>
-#include <osgEarth/VirtualProgram>
 #include <osgEarth/DrawInstanced>
-#include <osgEarth/Capabilities>
 #include <osgEarth/ScreenSpaceLayout>
 #include <osgEarth/CullingUtils>
 #include <osgEarth/NodeUtils>
@@ -94,13 +77,12 @@ namespace
 
 //------------------------------------------------------------------------
 
-SubstituteModelFilter::SubstituteModelFilter( const Style& style ) :
-_style                ( style ),
-_cluster              ( false ),
-_useDrawInstanced     ( true ),
-_merge                ( true ),
-_normalScalingRequired( false ),
-_instanceCache        ( false )     // cache per object so MT not required
+SubstituteModelFilter::SubstituteModelFilter(const Style& style) :
+    _style(style),
+    _cluster(false),
+    _useDrawInstanced(true),
+    _merge(true),
+    _normalScalingRequired(false)
 {
     //NOP
 }
@@ -112,12 +94,14 @@ SubstituteModelFilter::findResource(const URI&            uri,
                                     std::set<URI>&        missing,
                                     osg::ref_ptr<InstanceResource>& output )
 {
+
     // be careful about refptrs here since _instanceCache is an LRU.
-    InstanceCache::Record rec;
-    if ( _instanceCache.get(uri, rec) )
+    auto cached = _instanceCache.get(uri);
+    
+    if (cached.has_value())
     {
         // found it in the cache:
-        output = rec.value().get();
+        output = cached.value().get();
     }
     else if ( _resourceLib.valid() )
     {
@@ -244,7 +228,10 @@ void calculateGeometryHeading(Feature* input, FilterContext& context)
     }
     if (!headings.empty())
     {
-        input->setSwap("node-headings", headings);
+        std::stringstream buf;
+        for(auto& heading : headings)
+            buf << std::to_string(heading);
+        input->set("node-headings", buf.str());
     }
 }
 }
@@ -367,14 +354,18 @@ SubstituteModelFilter::process(const FeatureList&           features,
         scaleMatrix = osg::Matrix::scale( scaleVec );
         
         osg::Matrixd headingRotation;
-        const std::vector<double>* headingArray = 0L;
+        std::vector<double> headingArray;
+
         if ( modelSymbol )
         {
             if ( modelSymbol->orientationFromFeature().get() )
             {
                 if (input->hasAttr("node-headings"))
                 {
-                    headingArray = input->getDoubleArray("node-headings");
+                    std::string value = input->getString("node-headings");
+                    auto values = StringTokenizer().delim(",").tokenize(value);
+                    for (auto& value : values)
+                        headingArray.emplace_back(std::atof(value.c_str()));
                 }
                 else if (input->hasAttr("heading"))
                 {
@@ -467,9 +458,9 @@ SubstituteModelFilter::process(const FeatureList&           features,
 
                     scaleMatrix = osg::Matrix::scale( scaleVec );
 
-                    if ( modelSymbol && headingArray && geom->getType() == Geometry::TYPE_LINESTRING)
+                    if ( modelSymbol && !headingArray.empty() && geom->getType() == Geometry::TYPE_LINESTRING)
                     {
-                        headingRotation.makeRotate(osg::Quat(osg::DegreesToRadians((*headingArray)[pointIdx++]),
+                        headingRotation.makeRotate(osg::Quat(osg::DegreesToRadians(headingArray[pointIdx++]),
                                                              osg::Vec3(0,0,1)));
                     }
 

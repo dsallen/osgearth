@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
+/* osgEarth
 * Copyright 2008-2014 Pelican Mapping
-* http://osgearth.org
-*
-* osgEarth is free software; you can redistribute it and/or modify
-* it under the terms of the GNU Lesser General Public License as published by
-* the Free Software Foundation; either version 2 of the License, or
-* (at your option) any later version.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU Lesser General Public License for more details.
-*
-* You should have received a copy of the GNU Lesser General Public License
-* along with this program.  If not, see <http://www.gnu.org/licenses/>
+* MIT License
 */
 #include "TileDrawable"
 #include "EngineContext"
@@ -80,7 +66,7 @@ TileDrawable::TileDrawable(
     _bboxCB(NULL)
 {
     // builds the initial mesh.
-    setElevationRaster(0L, osg::Matrixf::identity());
+    setElevationRaster(nullptr, osg::Matrixf::identity());
 }
 
 TileDrawable::~TileDrawable()
@@ -89,8 +75,7 @@ TileDrawable::~TileDrawable()
 }
 
 void
-TileDrawable::setElevationRaster(const osg::Image*   image,
-                                 const osg::Matrixf& scaleBias)
+TileDrawable::setElevationRaster(Texture::Ptr image, const osg::Matrixf& scaleBias)
 {
     _elevationRaster = image;
     _elevationScaleBias = scaleBias;
@@ -111,16 +96,20 @@ TileDrawable::setElevationRaster(const osg::Image*   image,
         _mesh.resize(verts.size());
     }
 
-    if ( _elevationRaster.valid() )
+    if ( _elevationRaster)
     {
         const osg::Vec3Array& normals = *static_cast<osg::Vec3Array*>(_geom->getNormalArray());
         const osg::Vec3Array& units = *static_cast<osg::Vec3Array*>(_geom->getTexCoordArray());
 
         //OE_INFO << LC << _key.str() << " - rebuilding height cache" << std::endl;
 
-        ImageUtils::PixelReader readElevation(_elevationRaster.get());
+        ImageUtils::PixelReader readElevation(_elevationRaster->osgTexture()->getImage(0));
         readElevation.setBilinear(true);
         osg::Vec4f sample;
+
+        bool decode16bitHeight = _elevationRaster->minValue().isSet();
+        float minh = decode16bitHeight ? _elevationRaster->minValue().value() : 0.0f;
+        float maxh = decode16bitHeight ? _elevationRaster->maxValue().value() : 0.0f;
 
         float
             scaleU = _elevationScaleBias(0,0),
@@ -141,6 +130,12 @@ TileDrawable::setElevationRaster(const osg::Image*   image,
                     sample,
                     clamp(units[i].x()*scaleU + biasU, 0.0f, 1.0f),
                     clamp(units[i].y()*scaleV + biasV, 0.0f, 1.0f));
+
+                if (decode16bitHeight)
+                {
+                    float t = (sample.r() * 65280.0f + sample.g() * 255.0) / 65535.0f; // [0..1]
+                    sample.r() = minh + t * (maxh - minh); // scale to min/max
+                }
 
                 _mesh[i] = verts[i] + normals[i] * sample.r();
             }

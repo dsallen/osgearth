@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
-* Copyright 2020 Pelican Mapping
-* http://osgearth.org
-*
-* osgEarth is free software; you can redistribute it and/or modify
-* it under the terms of the GNU Lesser General Public License as published by
-* the Free Software Foundation; either version 2 of the License, or
-* (at your option) any later version.
-*
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU Lesser General Public License for more details.
-*
-* You should have received a copy of the GNU Lesser General Public License
-* along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+* Copyright 2025 Pelican Mapping
+* MIT License
 */
 #pragma once
 
@@ -26,7 +12,7 @@
 #include <osg/buffered_value>
 #include <osg/Image>
 #include <queue>
-#include <atomic>
+#include <unordered_set>
 
 namespace osgEarth
 {
@@ -94,8 +80,13 @@ namespace osgEarth
         OE_OPTION(GLenum, internalFormat);
         OE_OPTION(float, maxAnisotropy);
 
+        OE_OPTION(float, minValue);
+        OE_OPTION(float, maxValue);
+
         OE_PROPERTY(osg::ref_ptr<osg::Texture>, osgTexture, {});
         OE_PROPERTY_CONST(GLenum, target, GL_TEXTURE_2D);
+
+        GLenum getPixelFormat() const;
 
         //! Whether any actual image data has been loaded into this object,
         //! or whether we need to load it from the URI

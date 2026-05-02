@@ -1,29 +1,11 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include <osgEarth/Bing>
 #include <osgEarth/Registry>
-#include <osgEarth/FileUtils>
-#include <osgEarth/XmlUtils>
 #include <osgEarth/JsonUtils>
 #include <osgEarth/Progress>
-#include <osgDB/FileUtils>
-#include <osgDB/ReadFile>
 #include <osgEarth/Notify>
 #include <cstdlib>
 
@@ -78,7 +60,7 @@ BingImageLayer::init()
     ImageLayer::init();
 
     _debugDirect = false;
-    _tileURICache = new TileURICache(true, 1024u);
+    _tileURICache = new TileURICache(1024u);
     
     if ( ::getenv("OSGEARTH_BING_DIRECT") )
         _debugDirect = true;
@@ -160,12 +142,12 @@ BingImageLayer::createImageImplementation(const TileKey& key, ProgressCallback* 
             << "&key=" << _key;                        // API key
 
         // check the URI cache.
-        URI                  location;
-        TileURICache::Record rec;
+        URI location;
 
-        if (_tileURICache->get(request, rec))
+        auto cached = _tileURICache->get(request);
+        if (cached.has_value())
         {
-            location = URI(rec.value());
+            location = URI(cached.value());
         }
         else
         {
@@ -214,6 +196,7 @@ BingImageLayer::createImageImplementation(const TileKey& key, ProgressCallback* 
             }
 
             location = URI(imageUrl.asString());
+
             _tileURICache->insert(request, location.full());
         }
 

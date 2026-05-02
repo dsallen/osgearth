@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #pragma once
 #include <osgEarth/Common>
@@ -44,7 +30,8 @@ namespace osgEarth
             OE_OPTION(float, rangeFactor, 6.0);
             OE_OPTION(unsigned, minLevel, 0u);
             OE_OPTION(unsigned, maxLevel, 20u);
-            OE_OPTION(bool, nvgl, false);
+            OE_OPTION(bool, nvgl, true);
+            OE_OPTION(ProfileOptions, profile);
 
             Config getConfig() const override;
             void fromConfig(const Config& conf);
@@ -120,8 +107,7 @@ namespace osgEarth
         osg::ref_ptr<StateSetCache> _statesetCache;
 
         using L2Cache = LRUCache<TileKey, osg::ref_ptr<osg::Node>>;
-        mutable L2Cache _localcache;
-        mutable ReadWriteMutex _localcacheMutex;
+        mutable L2Cache _localcache{ 128u };
         mutable Gate<TileKey> _gate;
     };
 }

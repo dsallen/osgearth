@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include <osgEarth/URI>
 #include <osgEarth/HTTPClient>
@@ -22,14 +8,14 @@
 #include <osgEarth/Registry>
 #include <osgEarth/FileUtils>
 #include <osgEarth/Progress>
-#include <osgEarth/Utils>
-#include <osgEarth/Metrics>
 #include <osgEarth/NetworkMonitor>
 #include <osgDB/FileNameUtils>
 #include <osgDB/ReadFile>
 #include <osgDB/Archive>
-#include <osgUtil/IncrementalCompileOperation>
-#include <typeinfo>
+
+#ifdef OSGEARTH_HAVE_SUPERLUMINALAPI
+#include <Superluminal/PerformanceAPI.h>
+#endif
 
 #define LC "[URI] "
 
@@ -529,6 +515,10 @@ namespace
         const osgDB::Options* dbOptions,
         ProgressCallback*     progress)
     {
+#ifdef OSGEARTH_HAVE_SUPERLUMINALAPI
+        PERFORMANCEAPI_INSTRUMENT_FUNCTION();
+        PERFORMANCEAPI_INSTRUMENT_DATA("url", inputURI.full().c_str());
+#endif
         ScopedGate<std::string> gatelock(uri_gate, inputURI.full());
 
         //osg::Timer_t startTime = osg::Timer::instance()->tick();
@@ -575,10 +565,10 @@ namespace
             URIResultCache* memCache = URIResultCache::from( localOptions.get() );
             if ( memCache )
             {
-                URIResultCache::Record rec;
-                if ( memCache->get(uri, rec) )
+                auto cached = memCache->get(uri);
+                if (cached.has_value())
                 {
-                    result = rec.value();
+                    result = cached.value();
                 }
             }
 

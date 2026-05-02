@@ -1,25 +1,11 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 
 #include <osgEarth/MeasureTool>
 #include <osgEarth/GLUtils>
-
+#include <osgEarth/GeoMath>
 
 #define LC "[MeasureTool] "
 
@@ -99,16 +85,16 @@ MeasureToolHandler::rebuild()
     _feature->geoInterp() = _geoInterpolation;
 
     // clamp to the terrain skin as it pages in
-    AltitudeSymbol* alt = _feature->style().mutable_value().getOrCreate<AltitudeSymbol>();
+    AltitudeSymbol* alt = _feature->getOrCreateStyle().getOrCreate<AltitudeSymbol>();
     alt->clamping() = alt->CLAMP_TO_TERRAIN;
     alt->technique() = alt->TECHNIQUE_GPU;
 
     // offset to mitigate Z fighting
-    RenderSymbol* render = _feature->style().mutable_value().getOrCreate<RenderSymbol>();
+    RenderSymbol* render = _feature->getOrCreateStyle().getOrCreate<RenderSymbol>();
     render->depthOffset().mutable_value().automatic() = true;
 
     // define a style for the line
-    LineSymbol* ls = _feature->style().mutable_value().getOrCreate<LineSymbol>();
+    LineSymbol* ls = _feature->getOrCreateStyle().getOrCreate<LineSymbol>();
     ls->stroke().mutable_value().color() = Color::Yellow;
     ls->stroke().mutable_value().width() = Distance(2.0f, Units::PIXELS);
     ls->tessellation() = 150;
@@ -117,7 +103,6 @@ MeasureToolHandler::rebuild()
     _featureNode->setMapNode(getMapNode());
 
     GLUtils::setLighting(_featureNode->getOrCreateStateSet(), osg::StateAttribute::OFF);
-    //_featureNode->setClusterCulling(false);
 
     _root->addChild (_featureNode.get() );
 
@@ -126,7 +111,7 @@ MeasureToolHandler::rebuild()
     // Define the extent feature:
     _extentFeature = new Feature( new Polygon(), getMapNode()->getMapSRS() );
     _extentFeature->geoInterp() = GEOINTERP_RHUMB_LINE;
-    _extentFeature->style()->add( alt );
+    _extentFeature->getOrCreateStyle()->add( alt );
     LineSymbol* extentLine = _extentFeature->style()->getOrCreate<LineSymbol>();
     extentLine->stroke()->color() = Color::Cyan;
     extentLine->stroke()->width() = 2.0f;
@@ -178,8 +163,8 @@ MeasureToolHandler::setGeoInterpolation( GeoInterpolation geoInterpolation )
 void
 MeasureToolHandler::setLineStyle( const Style& style )
 {
-     _feature->style() = style;
-     _featureNode->dirty();
+    _feature->setStyle(style);
+    _featureNode->dirty();
 }
 
 bool MeasureToolHandler::handle( const osgGA::GUIEventAdapter& ea, osgGA::GUIActionAdapter& aa )

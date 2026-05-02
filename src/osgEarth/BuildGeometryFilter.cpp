@@ -1,20 +1,6 @@
-/* -*_maxPolyTilingAngle_deg-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include <osgEarth/BuildGeometryFilter>
 #include <osgEarth/Session>
@@ -32,20 +18,14 @@
 #include <osgEarth/Clamping>
 #include <osgEarth/LineDrawable>
 #include <osgEarth/PointDrawable>
-#include <osgEarth/StateSetCache>
 #include <osgEarth/Registry>
 #include <osgEarth/StyleSheet>
 #include <osg/Geode>
 #include <osg/Geometry>
-#include <osg/LineStipple>
-#include <osg/Point>
 #include <osg/TriangleIndexFunctor>
 #include <osgText/Text>
 #include <osgUtil/Tessellator>
 #include <osgUtil/Optimizer>
-#include <osgUtil/Simplifier>
-#include <osgDB/WriteFile>
-#include <osg/Version>
 #include <iterator>
 #include <osgEarth/Notify>
 #include "weemesh.h"
@@ -145,7 +125,7 @@ BuildGeometryFilter::processMeshes(FeatureList& features, FilterContext& context
 
         // access the polygon symbol, and bail out if there isn't one
         const PolygonSymbol* poly =
-            input->style().isSet() && input->style()->has<PolygonSymbol>() ? input->style()->get<PolygonSymbol>() :
+            input->style() && input->style()->has<PolygonSymbol>() ? input->style()->get<PolygonSymbol>() :
             _style.get<PolygonSymbol>();
 
         if (!poly) {
@@ -299,7 +279,7 @@ BuildGeometryFilter::processPolygons(FeatureList& features, FilterContext& conte
 
         // access the polygon symbol, and bail out if there isn't one
         const PolygonSymbol* poly =
-            input->style().isSet() && input->style()->has<PolygonSymbol>() ? input->style()->get<PolygonSymbol>() :
+            input->style() && input->style()->has<PolygonSymbol>() ? input->style()->get<PolygonSymbol>() :
             _style.get<PolygonSymbol>();
 
         if ( !poly ) {
@@ -487,7 +467,7 @@ BuildGeometryFilter::processPolygonizedLines(FeatureList&   features,
         Feature* input = i->get();
         // extract the required line symbol; bail out if not found.
         const LineSymbol* line =
-            input->style().isSet() && input->style()->has<LineSymbol>() ? input->style()->get<LineSymbol>() :
+            input->style() && input->style()->has<LineSymbol>() ? input->style()->get<LineSymbol>() :
             _style.get<LineSymbol>();
 
         if ( !line )
@@ -580,7 +560,6 @@ BuildGeometryFilter::processPolygonizedLines(FeatureList&   features,
         if (line->stroke().isSet() && line->stroke()->width().isSet())
         {
             lineWidth = line->stroke()->width()->eval(input, context);
-            //lineWidth = input->eval(line->stroke()->width().value(), &context);
         }
 
         // The operator we'll use to make lines into polygons.
@@ -591,7 +570,9 @@ BuildGeometryFilter::processPolygonizedLines(FeatureList&   features,
         }
         else
         {
-            polygonizer = new PolygonizeLinesOperator(line);
+            auto p = new PolygonizeLinesOperator(line);
+            p->_copyToBackFace = (line->doubleSided() == true);
+            polygonizer = p;            
         }
 
         // iterate over all the feature's geometry parts. We will treat
@@ -634,7 +615,7 @@ BuildGeometryFilter::processPolygonizedLines(FeatureList&   features,
 
             // turn the lines into polygons.
             CopyHeightsCallback copyHeights(hats.get());
-            osg::Geometry* geom = (*polygonizer)(verts.get(), normals.get(), lineWidth.as(Units::METERS), gpuClamping ? &copyHeights : 0L, twosided);
+            osg::Geometry* geom = (*polygonizer)(verts.get(), normals.get(), lineWidth.as(Units::METERS), gpuClamping ? &copyHeights : nullptr, twosided);
             //osg::Geometry* geom = gpuLines(verts.get());
             if ( geom )
             {
@@ -660,9 +641,13 @@ BuildGeometryFilter::processPolygonizedLines(FeatureList&   features,
     {
         // Optimize the Geode
         osg::Geode* geode = itr->second.get();
-        osgUtil::Optimizer::MergeGeometryVisitor mg;
-        mg.setTargetMaximumNumberOfVertices(Registry::instance()->getMaxNumberOfVertsPerDrawable());
-        geode->accept(mg);
+
+        if (mergeGeometry() == true)
+        {
+            osgUtil::Optimizer::MergeGeometryVisitor mg;
+            mg.setTargetMaximumNumberOfVertices(Registry::instance()->getMaxNumberOfVertsPerDrawable());
+            geode->accept(mg);
+        }
 
         if (_optimizeVertexOrdering == true)
         {
@@ -712,7 +697,7 @@ BuildGeometryFilter::processLines(FeatureList& features, FilterContext& context)
 
         // extract the required line symbol; bail out if not found.
         const LineSymbol* line =
-            input->style().isSet() && input->style()->has<LineSymbol>() ? input->style()->get<LineSymbol>() :
+            input->style() && input->style()->has<LineSymbol>() ? input->style()->get<LineSymbol>() :
             _style.get<LineSymbol>();
 
         // if there's no line symbol, bail.
@@ -861,7 +846,7 @@ BuildGeometryFilter::processPoints(FeatureList& features, FilterContext& context
 
             // extract the required point symbol; bail out if not found.
             const PointSymbol* point =
-                input->style().isSet() && input->style()->has<PointSymbol>() ? input->style()->get<PointSymbol>() :
+                input->style() && input->style()->has<PointSymbol>() ? input->style()->get<PointSymbol>() :
                 _style.get<PointSymbol>();
 
             if ( !point )
@@ -1875,7 +1860,7 @@ BuildGeometryFilter::push( FeatureList& input, FilterContext& context )
         }
 
         // if the featue has a style set, that overrides:
-        if ( f->style().isSet() )
+        if ( f->style() )
         {
             has_polysymbol = has_polysymbol     || (f->style()->has<PolygonSymbol>());
             has_pointsymbol = has_pointsymbol || (f->style()->has<PointSymbol>());
@@ -1895,33 +1880,38 @@ BuildGeometryFilter::push( FeatureList& input, FilterContext& context )
         {
             if (poly && poly->outline() == false)
                 has_linesymbol = false;
-            else if (f->style().isSet() && f->style()->has<PolygonSymbol>() && f->style()->get<PolygonSymbol>()->outline() == false)
+            else if (f->style() && f->style()->has<PolygonSymbol>() && f->style()->get<PolygonSymbol>()->outline() == false)
                 has_linesymbol = false;
         }
 
         // if no style is set, use the geometry type:
         if ( !has_polysymbol && !has_linesymbol && !has_polylinesymbol && !has_pointsymbol && f->getGeometry() )
         {
+            Style new_style;
+            if (f->style()) new_style = *f->style();
+
             switch( f->getGeometry()->getComponentType() )
             {
             default:
             case Geometry::TYPE_LINESTRING:
             case Geometry::TYPE_RING:
-                f->style().mutable_value().add( new LineSymbol() );
+                new_style.add( new LineSymbol() );
                 has_linesymbol = true;
                 break;
 
             case Geometry::TYPE_POINT:
             case Geometry::TYPE_POINTSET:
-                f->style().mutable_value().add( new PointSymbol() );
+                new_style.add( new PointSymbol() );
                 has_pointsymbol = true;
                 break;
 
             case Geometry::TYPE_POLYGON:
-                f->style().mutable_value().add( new PolygonSymbol() );
+                new_style.add( new PolygonSymbol() );
                 has_polysymbol = true;
                 break;
             }
+
+            f->setStyle(new_style);
         }
 
         if ( has_polysymbol )
@@ -1992,8 +1982,7 @@ BuildGeometryFilter::push( FeatureList& input, FilterContext& context )
     {
         OE_TEST << LC << "Building " << polygonizedLines.size() << " polygonized lines." << std::endl;
         bool twosided = polygons.size() > 0 ? false : true;
-        osg::ref_ptr< osg::Group > lines = processPolygonizedLines(polygonizedLines, twosided, context,
-                                                                   false);
+        osg::ref_ptr< osg::Group > lines = processPolygonizedLines(polygonizedLines, twosided, context, false);
         if (lines->getNumChildren() > 0)
         {
             if (!linesGroup.valid())

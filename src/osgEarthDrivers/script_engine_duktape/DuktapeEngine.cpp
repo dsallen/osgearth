@@ -1,28 +1,12 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include "DuktapeEngine"
 #include "JSGeometry"
-#include <osgEarth/JsonUtils>
 #include <osgEarth/StringUtils>
 #include <osgEarth/GeometryUtils>
 #include <osgEarth/Metrics>
-#include <sstream>
 
 #undef  LC
 #define LC "[JavaScript] "
@@ -173,26 +157,66 @@ namespace
         {
             duk_idx_t feature_i = duk_push_object(ctx);     // [global] [feature]
             {
-                duk_push_number(ctx, feature->getFID());       // [global] [feature] [id]
+                duk_push_number(ctx, feature->getFID());    // [global] [feature] [id]
                 duk_put_prop_string(ctx, feature_i, "id");  // [global] [feature]
+
+                auto& attrs = feature->getAttrs();
+
+                // Any attribute whose name starts with "." will be added directly to feature.
+                for (auto& a : attrs)
+                {
+                    if (a.first[0] == '.')
+                    {
+                        auto type = a.second.getType();
+
+                        if (type == ATTRTYPE_DOUBLE)
+                        {
+                            duk_push_number(ctx, a.second.getDouble()); // [global] [feature] [name]
+                        }
+                        else if (type == ATTRTYPE_INT)
+                        {
+                            duk_push_number(ctx, (double)a.second.getInt()); // [global] [feature] [name]
+                        }
+                        else if (type == ATTRTYPE_BOOL)
+                        {
+                            duk_push_boolean(ctx, a.second.getBool() ? 1 : 0); // [global] [feature] [name]
+                        }
+                        else // ATTRTYPE_STRING or others
+                        {
+                            duk_push_string(ctx, a.second.getString().c_str()); // [global] [feature] [name]
+                        }
+
+                        duk_put_prop_string(ctx, feature_i, a.first.substr(1).c_str());   // [global] [feature] [properties]
+                    }
+                }
 
                 duk_idx_t props_i = duk_push_object(ctx);   // [global] [feature] [properties]
                 {
-                    const AttributeTable& attrs = feature->getAttrs();
-                    for(AttributeTable::const_iterator a = attrs.begin(); a != attrs.end(); ++a)
+                    for(auto& a : attrs)
                     {
-                        AttributeType type = a->second.type;
-                        switch(type) {
-                        case ATTRTYPE_DOUBLE: duk_push_number (ctx, a->second.getDouble()); break;          // [global] [feature] [properties] [name]
-                        case ATTRTYPE_INT:    duk_push_number(ctx, (double)a->second.getInt()); break;             // [global] [feature] [properties] [name]
-                        case ATTRTYPE_BOOL:   duk_push_boolean(ctx, a->second.getBool()?1:0); break;            // [global] [feature] [properties] [name]
-#if 0
-                        case ATTRTYPE_DOUBLEARRAY: break;
-#endif
-                        case ATTRTYPE_STRING:
-                        default:              duk_push_string (ctx, a->second.getString().c_str()); break;  // [global] [feature] [properties] [name]
+                        if (a.first[0] != '.')
+                        {
+                            auto type = a.second.getType();
+
+                            if (type == ATTRTYPE_DOUBLE)
+                            {
+                                duk_push_number(ctx, a.second.getDouble());         // [global] [feature] [name]
+                            }
+                            else if (type == ATTRTYPE_INT)
+                            {
+                                duk_push_number(ctx, (double)a.second.getInt());    // [global] [feature] [name]
+                            }
+                            else if (type == ATTRTYPE_BOOL)
+                            {
+                                duk_push_boolean(ctx, a.second.getBool() ? 1 : 0);  // [global] [feature] [name]
+                            }
+                            else // ATTRTYPE_STRING or others
+                            {
+                                duk_push_string(ctx, a.second.getString().c_str()); // [global] [feature] [name]
+                            }
+
+                            duk_put_prop_string(ctx, props_i, a.first.c_str());     // [global] [feature] [properties]
                         }
-                        duk_put_prop_string(ctx, props_i, a->first.c_str()); // [global] [feature] [properties]
                     }
                 }
                 duk_put_prop_string(ctx, feature_i, "properties"); // [global] [feature]
@@ -448,16 +472,10 @@ DuktapeEngine::run(
 }
 
 ScriptResult
-DuktapeEngine::run(
-    const std::string& code,
-    Feature const* feature,
-    FilterContext const* context)
+DuktapeEngine::run(const std::string& code, Feature const* feature, FilterContext const* context)
 {
     if (code.empty())
         return ScriptResult(EMPTY_STRING, false, "Script is empty");
-
-    if (!feature)
-        return ScriptResult(EMPTY_STRING, false, "Feature is null");
 
     OE_PROFILING_ZONE;
 

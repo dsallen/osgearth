@@ -20,13 +20,11 @@ osgEarth builds on trusted open source technologies like OpenSceneGraph and GDAL
 
 ## Install the SDK
 
-Windows users can install the latest version of osgEarth through `vcpkg`:
+Install the latest version of osgEarth from `vcpkg`:
 ```bat
-git clone https://github.com/microsoft/vcpkg.git
-cd vcpkg && bootstrap-vcpkg.bat
 vcpkg install osgearth:x64-windows
+vcpkg install osgearth[tools]:x64-windows
 ```
-This will take a while the first time as vcpkg builds osgEarth and its dependencies.
 
 ## Check out some examples
 
@@ -36,14 +34,16 @@ Both of these read "earth files", XML files that describe the contents of a map.
 You can find example earth files in the `tests` folder of the repo.
 
 ```bat
-:: Online imagery and elevation:
-osgearth_imgui tests\readymap.earth
+cd tests
 
-:: OpenStreetMap:
-osgearth_imgui tests\osm.earth
+:: Online imagery and elevation:
+osgearth_imgui readymap.earth
 
 :: Local GeoTIFFs:
-osgearth_imgui tests\simple.earth 
+osgearth_imgui simple.earth 
+
+:: OpenStreetMap:
+osgearth_imgui osm.earth
 ```
 
 ## Integrate it into your project
@@ -86,6 +86,10 @@ int main(int argc, char** argv)
     return viewer.run();
 }
 ```
+
+## Build it yourself
+
+To build osgEarth yourself, [follow the instructions here](https://docs.osgearth.org/en/latest/build.html).
 
 ## Resources
 

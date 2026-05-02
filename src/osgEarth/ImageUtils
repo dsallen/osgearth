@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 
 #ifndef OSGEARTH_IMAGEUTILS_H
@@ -344,16 +330,16 @@ namespace osgEarth { namespace Util
         //! @param node The node to process
         static void compressAndMipmapTextures(osg::Node* node);
 
-        /**
-         * Gets an osgDB::ReaderWriter for the given input stream.
-         * Returns NULL if no ReaderWriter can be found.
-         */
+        //! Gets an osgDB::ReaderWriter for the given input stream.
+        //! Returns NULL if no ReaderWriter can be found.
         static osgDB::ReaderWriter* getReaderWriterForStream(std::istream& stream);
 
-        /**
-         * Reads an osg::Image from the given input stream.
-         * Returns NULL if the image could not be read.
-         */
+        //! Gets an osgDB::ReaderWriter for the given input string
+        //! Returns NULL if no ReaderWriter can be found.
+        static osgDB::ReaderWriter* getReaderWriterForString(const std::string& input);
+
+        //! Reads an osg::Image from the given input stream.
+        //! Returns NULL if the image could not be read.
         static osg::Image* readStream(std::istream& stream, const osgDB::Options* options);
 
         //! Make an empty 2D texture array
@@ -518,6 +504,7 @@ namespace osgEarth { namespace Util
             /** Reads a color from the image by unit coords [0..1] */
             osg::Vec4f operator()(float u, float v, int r=0, int m=0) const;
             void operator()(osg::Vec4f& output, float u, float v, int r=0, int m=0) const;
+
             osg::Vec4f operator()(double u, double v, int r=0, int m=0) const;
             void operator()(osg::Vec4f& output, double u, double v, int t=0, int m=0) const;
 

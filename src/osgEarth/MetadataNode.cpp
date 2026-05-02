@@ -1,20 +1,6 @@
-/* -*-c++-*- */
-/* osgEarth - Geospatial SDK for OpenSceneGraph
- * Copyright 2020 Pelican Mapping
- * http://osgearth.org
- *
- * osgEarth is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
+/* osgEarth
+ * Copyright 2025 Pelican Mapping
+ * MIT License
  */
 #include <osgEarth/MetadataNode>
 #include <osgEarth/VirtualProgram>
@@ -273,11 +259,6 @@ namespace osgEarth
                                 feature->set(attrName, static_cast<long long>(v));
                                 break;
                             }
-#if 0
-                            case ATTRTYPE_DOUBLEARRAY:
-                                // TODO:
-                                break;
-#endif
                             default:
                                 break;
                             }
@@ -348,13 +329,11 @@ namespace osgEarth
                     os << os.BEGIN_BRACKET << std::endl;
                     for (auto& attr : feature->getAttrs())
                     {
+                        auto type = attr.second.getType();
                         os << (unsigned int)keysToIndex[attr.first] << std::endl;
-                        os << (unsigned int)attr.second.type << std::endl;
-                        switch (attr.second.type)
+                        os << (unsigned int)type << std::endl;
+                        switch (type)
                         {
-                        case osgEarth::ATTRTYPE_BOOL:
-                            os << attr.second.getBool();
-                            break;
                         case osgEarth::ATTRTYPE_STRING:
                             os.writeWrappedString(attr.second.getString());
                             break;
@@ -362,16 +341,11 @@ namespace osgEarth
                             os << attr.second.getDouble();
                             break;
                         case osgEarth::ATTRTYPE_INT:
-                        {
-                            //os << (int)attr.second.getInt();
                             writeInt64(os, attr.second.getInt());
                             break;
-                        }
-#if 0
-                        case ATTRTYPE_DOUBLEARRAY:
-                            // TODO:
+                        case osgEarth::ATTRTYPE_BOOL:
+                            os << attr.second.getBool();
                             break;
-#endif
                         default:
                             break;
                         }
