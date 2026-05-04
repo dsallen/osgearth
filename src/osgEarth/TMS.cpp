@@ -287,19 +287,19 @@ TileMap::getURL(const osgEarth::TileKey& tilekey, bool invertY)
             {
                 if (!itr->getHref().empty())
                 {
-                    return itr->getHref() + "/" + std::to_string(x) + "/" + std::to_string(y) + "." + _format.getExtension();
-                }
-                else if (osgDB::containsServerAddress(_filename))
-                {
-                    auto f = _filename;
-                    if (!f.empty() && f.back() != '/') f += "/";
-                    return f + std::to_string(zoom) + "/" + std::to_string(x) + "/" + std::to_string(y) + "." + _format.getExtension();
+                    if( osgDB::containsServerAddress(itr->getHref() ) )
+                        return itr->getHref() + "/" + std::to_string(x) + "/" + std::to_string(y) + "." + _format.getExtension();
+                    else if (itr->getHref()[0] == '/')
+                        return osgDB::getServerProtocol(_filename) +"://" + osgDB::getServerAddress(_filename) + itr->getHref() + "/" + std::to_string(x) + "/" + std::to_string(y) + "." + _format.getExtension();
+                    else
+                        return osgDB::getFilePath(_filename) + "/" + std::to_string(x) + "/" + std::to_string(y) + "." + _format.getExtension();
                 }
                 else
                 {
-                    // trip the XML file name off the end of the filename
+                    // trim the XML file name off the end of the filename
                     return osgDB::getFilePath(_filename) + "/" + std::to_string(zoom) + "/" + std::to_string(x) + "/" + std::to_string(y) + "." + _format.getExtension();
                 }
+
             }
         }
     }
