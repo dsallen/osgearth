@@ -16,6 +16,12 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
+// GDAL_DEBUG (injected by cmake INTERFACE_COMPILE_DEFINITIONS in debug builds) changes
+// OGRLayerH/OGRDataSourceH/etc from void* to opaque struct*, breaking this file's void*
+// member declarations. Undef before any GDAL headers are pulled in transitively.
+#ifdef GDAL_DEBUG
+#undef GDAL_DEBUG
+#endif
 #include <osgEarth/OGRFeatureSource>
 #include <osgEarth/OgrUtils>
 #include <osgEarth/GeometryUtils>
