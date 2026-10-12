@@ -17,6 +17,8 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>
 */
 #include "TileNode"
+#include <memory>
+#include <vector>
 #include "SurfaceNode"
 #include "EngineContext"
 #include "Loader"
@@ -718,6 +720,12 @@ TileNode::createChildren()
 
         else if (_createChildrenFutureResult.available())
         {
+            // TRAKKA PATCH: attach at most this many finished child groups (4 tiles
+            // each) per frame; the rest wait a frame (parent keeps drawing meanwhile).
+            static constexpr int kTrakkaMaxChildGroupsPerFrame = 4;
+            if (!_context->trakkaTryAttachChildren(_context->getClock()->getFrame(), kTrakkaMaxChildGroupsPerFrame))
+                return false;
+
             // all 4 children MUST be present AND valid to continue
             if (_createChildrenFutureResult.value().size() == 4 &&
                 _createChildrenFutureResult.value()[0].valid() &&
@@ -1369,9 +1377,23 @@ TileNode::areSubTilesDormant() const
         getSubTile(3)->isDormant();
 }
 
+// TRAKKA PATCH: destroy unloaded terrain subtiles on a background thread.
+// The REX unloader (UPDATE traversal) showed 5-20 ms spikes removing subtiles;
+// the destructors of the removed subtrees now run off the frame.
+// Set to false to restore stock behaviour.
+static constexpr bool kTrakkaDeferredSubtileDelete = true;
+
 void
 TileNode::removeSubTiles()
 {
+    std::shared_ptr<std::vector<osg::ref_ptr<osg::Node>>> trakkaDoomed;
+    if (kTrakkaDeferredSubtileDelete && getNumChildren() > 0)
+    {
+        trakkaDoomed = std::make_shared<std::vector<osg::ref_ptr<osg::Node>>>();
+        for (unsigned i = 0; i < getNumChildren(); ++i)
+            trakkaDoomed->emplace_back(getChild(i));
+    }
+
     _childrenReady = false;
     for(int i=0; i<(int)getNumChildren(); ++i)
     {
@@ -1385,6 +1407,15 @@ TileNode::removeSubTiles()
     _createChildResults[1].reset();
     _createChildResults[2].reset();
     _createChildResults[3].reset();
+
+    if (trakkaDoomed)
+    {
+        jobs::context c;
+        c.name = "trakka.unloadtiles";
+        c.pool = jobs::get_pool("oe.trakka.unload");
+        c.can_cancel = false;
+        jobs::dispatch([trakkaDoomed]() { trakkaDoomed->clear(); }, c);
+    }
 }
 
 

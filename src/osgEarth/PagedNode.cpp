@@ -17,6 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>
  */
 #include "PagedNode"
+#include <memory>
 #include "GLUtils"
 #include "NodeUtils"
 #include "Progress"
@@ -301,14 +302,36 @@ PagedNode2::load()
     }
 }
 
+// TRAKKA PATCH: destroy unloaded subgraphs on a background thread.
+// Unloading a large feature tile (streets, POIs) runs all of its destructors
+// inline in the UPDATE traversal, which showed up as 10-90 ms update spikes.
+// Set to false to restore stock behaviour.
+static constexpr bool kTrakkaDeferredUnloadDelete = true;
+
 void PagedNode2::unload()
 {
+    std::shared_ptr<osg::ref_ptr<osg::Node>> trakkaDoomed;
+    if (kTrakkaDeferredUnloadDelete && _loaded.available() && _loaded.value().valid())
+    {
+        trakkaDoomed = std::make_shared<osg::ref_ptr<osg::Node>>(_loaded.value());
+    }
+
     if (_merged.has_value(true))
     {
         removeChild(_loaded.value());
     }
 
     _loaded.reset();
+
+    if (trakkaDoomed)
+    {
+        jobs::context c;
+        c.name = "trakka.unload";
+        c.pool = jobs::get_pool("oe.trakka.unload");
+        c.can_cancel = false;
+        // shared holder so whichever copy of the task runs, the last ref is dropped in the worker
+        jobs::dispatch([trakkaDoomed]() { *trakkaDoomed = nullptr; }, c);
+    }
     _merged.reset();
 
     _loadGate.exchange(false);

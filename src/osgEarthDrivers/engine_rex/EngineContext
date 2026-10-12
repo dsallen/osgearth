@@ -86,6 +86,20 @@ namespace osgEarth { namespace REX
 
         const FrameClock* getClock() const { return _clock; }
 
+        // TRAKKA PATCH: per-frame budget for attaching newly created child tiles
+        // during cull. Without it, many finished createChildren jobs can all be
+        // attached in one cull (addChild + initializeData + refreshAllLayers each),
+        // giving 20-45 ms terrain cull spikes while loading.
+        bool trakkaTryAttachChildren(unsigned frame, int maxPerFrame)
+        {
+            if (frame != _trakkaAttachFrame) { _trakkaAttachFrame = frame; _trakkaAttachCount = 0; }
+            if (_trakkaAttachCount >= maxPerFrame) return false;
+            ++_trakkaAttachCount;
+            return true;
+        }
+        unsigned _trakkaAttachFrame = ~0u;
+        int _trakkaAttachCount = 0;
+
         TextureArena* textures() const { return _textures.get(); }
 
     protected:
