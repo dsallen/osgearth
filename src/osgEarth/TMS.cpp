@@ -23,6 +23,12 @@
 #include <osgEarth/LandCover>
 #include <osgEarth/ImageToHeightFieldConverter>
 #include <osgDB/FileUtils>
+#include <algorithm>
+#include <cstdlib>
+#include <mutex>
+#include <future>
+#include <list>
+#include <unordered_map>
 
 using namespace osgEarth;
 using namespace osgEarth::TMS;
@@ -589,25 +595,32 @@ TileMapReaderWriter::read( const Config& conf )
             double maxX = conf.value<double>(ATTR_MAXX, 0.0);
             double maxY = conf.value<double>(ATTR_MAXY, 0.0);
 
+            unsigned int minLevel = conf.value<unsigned>(ATTR_MIN_LEVEL, 0);
             unsigned int maxLevel = conf.value<unsigned>(ATTR_MAX_LEVEL, 0);
+
+            // Legacy files have no minlevel and use maxlevel="0" to mean "no limit".
+            // When minlevel is present, maxlevel is taken literally (0 is a valid max).
+            bool hasMaxLevel = conf.hasValue(ATTR_MAX_LEVEL) &&
+                (maxLevel > 0 || conf.hasValue(ATTR_MIN_LEVEL));
 
             std::string description = conf.value<std::string>(ATTR_DESCRIPTION, std::string());
 
-            //OE_DEBUG << LC << "Read area " << minX << ", " << minY << ", " << maxX << ", " << maxY << ", minlevel=" << minLevel << " maxlevel=" << maxLevel << std::endl;
+            OE_DEBUG << LC << "Read area " << minX << ", " << minY << ", " << maxX << ", " << maxY << ", minlevel=" << minLevel << " maxlevel=" << maxLevel << std::endl;
 
-            if ( maxLevel > 0 )
+            GeoExtent extent(profile->getSRS(), minX, minY, maxX, maxY);
+            if ( hasMaxLevel )
             {
                 if(description.empty())
-                    tileMap->getDataExtents().push_back( DataExtent(GeoExtent(profile->getSRS(), minX, minY, maxX, maxY), 0, maxLevel));
+                    tileMap->getDataExtents().push_back( DataExtent(extent, minLevel, maxLevel));
                 else
-                    tileMap->getDataExtents().push_back( DataExtent(GeoExtent(profile->getSRS(), minX, minY, maxX, maxY), 0, maxLevel, description));
+                    tileMap->getDataExtents().push_back( DataExtent(extent, minLevel, maxLevel, description));
             }
             else
             {
                 if(description.empty())
-                    tileMap->getDataExtents().push_back( DataExtent(GeoExtent(profile->getSRS(), minX, minY, maxX, maxY), 0) );
+                    tileMap->getDataExtents().push_back( DataExtent(extent, minLevel) );
                 else
-                    tileMap->getDataExtents().push_back( DataExtent(GeoExtent(profile->getSRS(), minX, minY, maxX, maxY), 0, description) );
+                    tileMap->getDataExtents().push_back( DataExtent(extent, minLevel, description) );
             }
         }
     }
@@ -1306,6 +1319,111 @@ TMSElevationLayer::closeImplementation()
     return ElevationLayer::closeImplementation();
 }
 
+namespace
+{
+    // ------------------------------------------------------------------
+    // Trakka: process-wide cache of downloaded TMS elevation tiles.
+    //
+    // Without a disk cache the same elevation tile was downloaded dozens
+    // of times: every map tile and every clamped feature that falls back
+    // to the same source tile asks for it, the four globes each have their
+    // own layer, and some osgEarth paths (assembleHeightField) skip the
+    // layer's L2 memory cache. This cache sits at the download itself, is
+    // shared by every TMSElevationLayer with the same URL, and makes callers
+    // that ask for a tile already being downloaded wait for that download
+    // instead of starting their own.
+    // ------------------------------------------------------------------
+    class SharedHeightFieldCache
+    {
+    public:
+        using HF = osg::ref_ptr<osg::HeightField>;
+
+        static SharedHeightFieldCache& instance()
+        {
+            static SharedHeightFieldCache c;
+            return c;
+        }
+
+        // Returns a private copy of the tile (callers may modify it).
+        template<typename FETCH>
+        HF get(const std::string& id, FETCH fetch, bool& fromCache)
+        {
+            fromCache = false;
+            std::shared_future<HF> waitFor;
+            std::shared_ptr<std::promise<HF>> mine;
+            {
+                std::unique_lock<std::mutex> lock(_mutex);
+                auto c = _map.find(id);
+                if (c != _map.end())
+                {
+                    _lru.splice(_lru.begin(), _lru, c->second.second);
+                    fromCache = true;
+                    return copy(c->second.first);
+                }
+                auto f = _inflight.find(id);
+                if (f != _inflight.end())
+                {
+                    waitFor = f->second;
+                }
+                else
+                {
+                    mine = std::make_shared<std::promise<HF>>();
+                    _inflight[id] = mine->get_future().share();
+                }
+            }
+
+            if (waitFor.valid())
+            {
+                HF hf = waitFor.get();
+                if (hf.valid())
+                {
+                    fromCache = true;
+                    return copy(hf);
+                }
+                // The other download failed or was canceled; try ourselves.
+                return fetch();
+            }
+
+            HF hf;
+            try { hf = fetch(); } catch (...) { }
+            {
+                std::unique_lock<std::mutex> lock(_mutex);
+                _inflight.erase(id);
+                if (hf.valid())
+                {
+                    _lru.push_front(id);
+                    _map[id] = std::make_pair(hf, _lru.begin());
+                    while (_map.size() > _capacity)
+                    {
+                        _map.erase(_lru.back());
+                        _lru.pop_back();
+                    }
+                }
+            }
+            mine->set_value(hf);
+            return hf.valid() ? copy(hf) : hf;
+        }
+
+    private:
+        SharedHeightFieldCache()
+        {
+            const char* env = ::getenv("TRAKKA_ELEV_CACHE_TILES");
+            if (env) _capacity = std::max(16, ::atoi(env));
+        }
+
+        static HF copy(const HF& hf)
+        {
+            return static_cast<osg::HeightField*>(hf->clone(osg::CopyOp::DEEP_COPY_ALL));
+        }
+
+        std::mutex _mutex;
+        size_t _capacity = 256; // ~65 MB for 257x257 float tiles
+        std::list<std::string> _lru;
+        std::unordered_map<std::string, std::pair<HF, std::list<std::string>::iterator>> _map;
+        std::unordered_map<std::string, std::shared_future<HF>> _inflight;
+    };
+}
+
 GeoHeightField
 TMSElevationLayer::createHeightFieldImplementation(const TileKey& key, ProgressCallback* progress) const
 {
@@ -1316,25 +1434,33 @@ TMSElevationLayer::createHeightFieldImplementation(const TileKey& key, ProgressC
         return GeoHeightField::INVALID;
     }
 
-    // Make an image, then convert it to a heightfield
-    GeoImage image = _imageLayer->createImageImplementation(key, progress);
-    if (image.valid())
+    Status failure;
+    auto fetch = [&]() -> osg::ref_ptr<osg::HeightField>
     {
+        // Make an image, then convert it to a heightfield
+        GeoImage image = _imageLayer->createImageImplementation(key, progress);
+        if (!image.valid())
+        {
+            failure = image.getStatus();
+            return nullptr;
+        }
         if (image.getImage()->s() > 1 && image.getImage()->t() > 1)
         {
             ImageToHeightFieldConverter conv;
-            osg::HeightField* hf = conv.convert(image.getImage());
-            return GeoHeightField(hf, key.getExtent());
+            return conv.convert(image.getImage());
         }
-        else
-        {
-            return GeoHeightField::INVALID;
-        }
-    }
-    else
-    {
-        return GeoHeightField(image.getStatus());
-    }
+        return nullptr;
+    };
+
+    const std::string id = options().url()->full() + "|" + key.str();
+    bool fromCache = false;
+    osg::ref_ptr<osg::HeightField> hf = SharedHeightFieldCache::instance().get(id, fetch, fromCache);
+
+    if (hf.valid())
+        return GeoHeightField(hf.get(), key.getExtent());
+    if (failure.isError())
+        return GeoHeightField(failure);
+    return GeoHeightField::INVALID;
 }
 
 Status
