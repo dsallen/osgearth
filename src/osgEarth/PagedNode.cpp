@@ -331,7 +331,10 @@ PagedNode2::isHighestResolution() const
 }
 
 PagingManager::PagingManager(const std::string& jobpoolname) :
-    _jobpoolName(jobpoolname)
+    // An empty name used to configure (and report metrics for) weejobs' unnamed default
+    // pool, while PagedNode2::startLoad() falls back to DEFAULT_JOBPOOL_NAME - so the
+    // set_concurrency() below never reached the pool doing the work.
+    _jobpoolName(jobpoolname.empty() ? std::string(DEFAULT_JOBPOOL_NAME) : jobpoolname)
 {
     setCullingActive(false);
     ADJUST_UPDATE_TRAV_COUNT(this, +1);
@@ -400,7 +403,7 @@ PagingManager::update()
     {
         scoped_lock_if lock(_trackerMutex, _threadsafe);
 
-        _tracker.flush(_mergesPerFrame, [this](osg::ref_ptr<PagedNode2>& node)
+        _tracker.flush(getMaxUnloadsPerFrame(), [this](osg::ref_ptr<PagedNode2>& node)
             {
                 // if the node is no longer in the scene graph, expunge it
                 if (node->referenceCount() == 1)

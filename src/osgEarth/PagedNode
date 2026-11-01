@@ -271,6 +271,16 @@ namespace osgEarth { namespace Util
             return _mergesPerFrame;
         }
 
+        //! Maximum number of nodes to unload/expunge per update pass.
+        //! (TRAKKA) If not set, falls back to the max merges per frame (upstream behavior).
+        //! Unloads are much more expensive than merges, so they can be capped separately.
+        void setMaxUnloadsPerFrame(unsigned value) {
+            _unloadsPerFrame = value;
+        }
+        unsigned getMaxUnloadsPerFrame() const {
+            return _unloadsPerFrame != ~0u ? _unloadsPerFrame : _mergesPerFrame;
+        }
+
         //! Number of nodes under management
         unsigned getNumTrackedNodes() const {
             return _tracker.size();
@@ -308,6 +318,7 @@ namespace osgEarth { namespace Util
         };
         std::queue<ToMerge> _mergeQueue;
         unsigned _mergesPerFrame = ~0u;
+        unsigned _unloadsPerFrame = ~0u;
         std::atomic_bool _newFrame = { false };
 
         inline void merge(PagedNode2* host);

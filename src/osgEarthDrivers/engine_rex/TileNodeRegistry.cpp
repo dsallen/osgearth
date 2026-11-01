@@ -253,6 +253,18 @@ TileNodeRegistry::collectDormantTiles(
 
         const TileKey& key = tile->getKey();
 
+        // TRAKKA PATCH: when a tile is re-created with the same key (e.g. after its
+        // siblings were orphaned), add() replaces the registry entry but leaves the
+        // old tracker token behind. Without this check, disposing that stale token
+        // erases the LIVE tile's entry, leaving a tile in the scene graph that is no
+        // longer registered (-> "ASSERTION FAILURE (touch ...) i != _tiles.end()"
+        // every frame). Just drop the stale token instead.
+        auto liveEntry = _tiles.find(key);
+        if (liveEntry == _tiles.end() || liveEntry->second._tile.get() != tile.get())
+        {
+            return true;
+        }
+
         if (tile->getDoNotExpire() == false &&
             tile->getLastTraversalTime() < oldestAllowableTime &&
             tile->getLastTraversalFrame() < (int)oldestAllowableFrame &&

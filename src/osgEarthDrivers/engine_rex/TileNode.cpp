@@ -718,6 +718,12 @@ TileNode::createChildren()
 
         else if (_createChildrenFutureResult.available())
         {
+            // TRAKKA PATCH: attach at most this many finished child groups (4 tiles
+            // each) per frame; the rest wait a frame (parent keeps drawing meanwhile).
+            static constexpr int kTrakkaMaxChildGroupsPerFrame = 4;
+            if (!_context->trakkaTryAttachChildren(_context->getClock()->getFrame(), kTrakkaMaxChildGroupsPerFrame))
+                return false;
+
             // all 4 children MUST be present AND valid to continue
             if (_createChildrenFutureResult.value().size() == 4 &&
                 _createChildrenFutureResult.value()[0].valid() &&
