@@ -323,6 +323,9 @@ ProgramRepo::linkProgram(
             _programBinaryCacheFolder, 
             osgEarth::toLegalFileName(programCacheNameStream.str(), false, "-"));
 
+        // drop any binary left on the program by another define variant
+        program->setProgramBinary(nullptr);
+
         //currently set to be able to read and write to the binary file so only need to open file once.
         fStream.open(programCacheName.c_str(), std::fstream::in | std::fstream::out | std::fstream::app | std::fstream::binary);
         if (fStream.is_open())
@@ -358,7 +361,11 @@ ProgramRepo::linkProgram(
 
             //If there is not a programBinary then we need to add one
             // This sets an openGL hint so we can grab it later.
-            if (program->getProgramBinary() == NULL)
+            // The binary lives on the osg::Program, which every define variant
+            // shares: a variant with no cached file must not link with another
+            // variant's binary (and then save it under its own name), so give
+            // it a fresh, empty one.
+            if (!readFromCache)
             {
                 program->setProgramBinary(new osg::Program::ProgramBinary());
             }
